@@ -1,0 +1,37 @@
+{
+  "name": "Trip OS — 旅行 × 周末决策工作台",
+  "short_name": "Trip OS",
+  "description": "不知道去哪的时候，帮你做决定；周末想出门的时候，帮你安排。",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#FAF6EF",
+  "theme_color": "#FAF6EF",
+  "lang": "zh-CN",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    { "name": "这周末去哪", "short_name": "周末", "url": "/weekend/where" },
+    { "name": "周末计划", "short_name": "计划", "url": "/weekend/plan" },
+    { "name": "旅行", "url": "/travel" }
+  ]
+}

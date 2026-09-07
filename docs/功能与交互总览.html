@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Trip OS · 功能与交互总览</title>
+<style>
+  :root {
+    --paper: #FAF6EF;
+    --paper-deep: #F2ECE1;
+    --ink: #24211D;
+    --ink-soft: #6B655C;
+    --ink-faint: #9C958A;
+    --amber: #FFC94D;
+    --violet: #7C5CFF;
+    --rose: #E8615A;
+    --green: #2FA36B;
+    --line: rgba(36, 33, 29, 0.14);
+    --shadow: 3px 3px 0 var(--ink);
+  }
+
+  * { box-sizing: border-box; }
+
+  html { scroll-behavior: smooth; scroll-padding-top: 84px; }
+
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB",
+      "Microsoft YaHei", "Segoe UI", Roboto, sans-serif;
+    font-size: 15px;
+    line-height: 1.7;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ── 顶栏 ───────────────────────────────────────── */
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    padding: 12px 24px;
+    background: var(--paper);
+    border-bottom: 1.5px solid var(--ink);
+    flex-wrap: wrap;
+  }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 17px; letter-spacing: -0.02em; }
+  .brand-mark {
+    display: grid; place-items: center;
+    width: 32px; height: 32px;
+    border: 1.5px solid var(--ink);
+    border-radius: 9px;
+    background: var(--amber);
+    box-shadow: 2px 2px 0 var(--ink);
+  }
+  .topnav { display: flex; gap: 4px; flex-wrap: wrap; margin-left: auto; }
+  .topnav a {
+    padding: 5px 11px;
+    border: 1.5px solid transparent;
+    border-radius: 999px;
+    color: var(--ink-soft);
+    font-size: 13px;
+    font-weight: 600;
+    text-decoration: none;
+    transition: all 0.15s;
+  }
+  .topnav a:hover { border-color: var(--line); background: var(--paper-deep); color: var(--ink); }
+
+  main { max-width: 1080px; margin: 0 auto; padding: 40px 24px 80px; }
+
+  /* ── 区块 ───────────────────────────────────────── */
+  section { margin-bottom: 56px; }
+  .sec-label {
+    display: inline-block;
+    font-size: 11.5px;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin-bottom: 8px;
+  }
+  h2 { font-size: 26px; font-weight: 800; letter-spacing: -0.02em; margin: 0 0 6px; }
+  .sec-desc { color: var(--ink-soft); margin: 0 0 24px; max-width: 68ch; }
+
+  /* ── Hero ───────────────────────────────────────── */
+  .hero {
+    border: 1.5px solid var(--ink);
+    border-radius: 18px;
+    background: var(--paper-deep);
+    box-shadow: var(--shadow);
+    padding: 32px;
+    margin-bottom: 48px;
+  }
+  .hero h1 { font-size: 34px; font-weight: 800; letter-spacing: -0.03em; margin: 0 0 12px; }
+  .hero p { margin: 0; color: var(--ink-soft); max-width: 70ch; }
+  .hero-tags { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
+  .tag {
+    padding: 4px 11px;
+    border: 1.5px solid var(--ink);
+    border-radius: 999px;
+    background: #fff;
+    font-size: 12.5px;
+    font-weight: 700;
+  }
+  .tag.amber { background: var(--amber); }
+  .tag.violet { background: rgba(124, 92, 255, 0.16); }
+  .tag.green { background: rgba(47, 163, 107, 0.16); }
+
+  /* ── 统计条 ─────────────────────────────────────── */
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 48px; }
+  .stat {
+    border: 1.5px solid var(--ink);
+    border-radius: 14px;
+    background: #fff;
+    padding: 16px 18px;
+    box-shadow: 2px 2px 0 var(--ink);
+  }
+  .stat b { display: block; font-size: 26px; font-weight: 800; letter-spacing: -0.02em; }
+  .stat span { font-size: 12.5px; color: var(--ink-soft); font-weight: 600; }
+
+  /* ── 架构流 ─────────────────────────────────────── */
+  .flow { display: grid; grid-template-columns: 1fr auto 1fr; gap: 16px; align-items: stretch; }
+  .flow-col {
+    border: 1.5px solid var(--ink);
+    border-radius: 16px;
+    padding: 18px;
+    background: #fff;
+  }
+  .flow-col.decision { background: rgba(124, 92, 255, 0.08); }
+  .flow-col.exec { background: rgba(255, 201, 77, 0.16); }
+  .flow-col h3 { margin: 0 0 4px; font-size: 16px; font-weight: 800; }
+  .flow-col .sub { font-size: 12.5px; color: var(--ink-soft); margin-bottom: 14px; }
+  .flow-col ul { margin: 0; padding-left: 18px; }
+  .flow-col li { margin-bottom: 5px; font-size: 13.5px; }
+  .flow-arrow {
+    display: grid; place-items: center;
+    font-size: 26px; font-weight: 800; color: var(--ink-faint);
+    padding: 0 4px;
+  }
+  @media (max-width: 760px) {
+    .flow { grid-template-columns: 1fr; }
+    .flow-arrow { transform: rotate(90deg); }
+  }
+
+  /* ── 表格 ───────────────────────────────────────── */
+  .table-wrap {
+    border: 1.5px solid var(--ink);
+    border-radius: 16px;
+    overflow: hidden;
+    background: #fff;
+    box-shadow: 2px 2px 0 var(--ink);
+  }
+  table { width: 100%; border-collapse: collapse; }
+  th {
+    text-align: left;
+    font-size: 11.5px;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    background: var(--paper-deep);
+    padding: 11px 14px;
+    border-bottom: 1.5px solid var(--line);
+  }
+  td { padding: 12px 14px; border-bottom: 1px solid var(--line); font-size: 13.5px; vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  td code {
+    background: var(--paper-deep);
+    padding: 1.5px 6px;
+    border-radius: 5px;
+    font-size: 12.5px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  .new-badge {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 1px 6px;
+    border-radius: 999px;
+    background: var(--violet);
+    color: #fff;
+    font-size: 10.5px;
+    font-weight: 800;
+    vertical-align: middle;
+  }
+
+  /* ── 状态点 ─────────────────────────────────────── */
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+  .dot.ok { background: var(--green); }
+  .dot.warn { background: var(--amber); }
+  .dot.off { background: var(--ink-faint); }
+
+  /* ── 卡片网格 ───────────────────────────────────── */
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 14px; }
+  .card {
+    border: 1.5px solid var(--ink);
+    border-radius: 14px;
+    background: #fff;
+    padding: 16px 18px;
+    box-shadow: 2px 2px 0 var(--ink);
+  }
+  .card h4 { margin: 0 0 6px; font-size: 14.5px; font-weight: 800; }
+  .card p { margin: 0; font-size: 13px; color: var(--ink-soft); }
+
+  /* ── 备注列表 ───────────────────────────────────── */
+  .notes { list-style: none; margin: 0; padding: 0; }
+  .notes li {
+    border: 1.5px solid var(--ink);
+    border-radius: 12px;
+    background: #fff;
+    padding: 13px 16px;
+    margin-bottom: 10px;
+    font-size: 13.5px;
+  }
+  .notes li b { font-weight: 800; }
+  .notes li .muted { color: var(--ink-soft); }
+
+  footer {
+    border-top: 1.5px solid var(--ink);
+    padding: 24px;
+    text-align: center;
+    color: var(--ink-faint);
+    font-size: 12.5px;
+  }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-mark">✈</span>
+    Trip OS
+  </div>
+  <nav class="topnav">
+    <a href="#overview">概览</a>
+    <a href="#arch">架构</a>
+    <a href="#decision">决策层</a>
+    <a href="#exec">执行层</a>
+    <a href="#global">全局能力</a>
+    <a href="#intent">意图路由</a>
+    <a href="#status">验证</a>
+    <a href="#known">已知问题</a>
+  </nav>
+</header>
+
+<main>
+
+  <!-- 概览 -->
+  <section id="overview">
+    <div class="hero">
+      <h1>旅行 × 生活决策助手</h1>
+      <p>
+        核心不是「帮你做行程」，而是<strong>帮你做决定</strong>。产品围绕
+        <strong>想 → 选 → 去</strong> 三段组织：先用一句话接住模糊的念头，
+        再给出少量可比较的候选，最后才落到可执行的时间线与地图。
+        刻意不做「一上来就生成 7 天完整行程」——那是计划，不是决策。
+      </p>
+      <div class="hero-tags">
+        <span class="tag amber">决策优先</span>
+        <span class="tag violet">想 → 选 → 去</span>
+        <span class="tag">默认轻量</span>
+        <span class="tag green">不编造数据</span>
+        <span class="tag">计划可选</span>
+      </div>
+    </div>
+
+    <div class="stats">
+      <div class="stat"><b>9</b><span>轮迭代</span></div>
+      <div class="stat"><b>187</b><span>冒烟断言全绿</span></div>
+      <div class="stat"><b>2</b><span>大分层（决策 / 执行）</span></div>
+      <div class="stat"><b>8</b><span>决策意图已接入</span></div>
+      <div class="stat"><b>7</b><span>导航一级入口</span></div>
+    </div>
+  </section>
+
+  <!-- 架构 -->
+  <section id="arch">
+    <span class="sec-label">Architecture</span>
+    <h2>架构分层</h2>
+    <p class="sec-desc">
+      决策层负责「想」和「选」，执行层负责「去」。两层通过 PlaceState / WeekendPlan /
+      Trip 数据贯通，但 UI 上刻意分开——周末不应该是旅行的缩小版。
+    </p>
+
+    <div class="flow">
+      <div class="flow-col decision">
+        <h3>决策层 · 想 → 选</h3>
+        <div class="sub">输出「少量候选 + 为什么」，不生成行程</div>
+        <ul>
+          <li><code>/</code> 首页驾驶舱</li>
+          <li><code>/discover</code> 场景选择（旅游 / 周末）</li>
+          <li><code>/weekend</code> 周末挑去哪 / 做什么</li>
+          <li><code>/quiz</code> 9 问测评</li>
+          <li><code>/destinations</code> 推荐 3 个</li>
+          <li><code>/compare</code> · <code>/random</code> · <code>/trips/new</code></li>
+        </ul>
+      </div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-col exec">
+        <h3>执行层 · 去</h3>
+        <div class="sub">时间线 + 地图 + 导航，可选而非默认</div>
+        <ul>
+          <li><code>/weekend/plan</code> 周末计划（时间线 + 地图）</li>
+          <li><code>/trips/:id/itinerary</code> 行程</li>
+          <li><code>/trips/:id/map</code> 地图</li>
+          <li><code>/trips/:id/budget</code> 预算</li>
+          <li><code>/trips/:id/checklist</code> 清单 · 预订 · 文件</li>
+          <li><code>/trips/:id/{plan,today,journey}</code></li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- 决策层 -->
+  <section id="decision">
+    <span class="sec-label">Decision Layer</span>
+    <h2>决策层页面与交互</h2>
+    <p class="sec-desc">本阶段重点改造区域。所有页面都支持从首页输入框一句话直达。</p>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th style="width:22%">页面</th><th style="width:56%">交互</th><th style="width:22%">状态</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>/</code> 首页</td>
+            <td>
+              ① 当前计划（有旅行才显示，不占位）② 周末常驻区块
+              ③「现在想做什么」输入框 ④ 其他旅行 / 新用户兜底入口
+            </td>
+            <td><span class="dot ok"></span>三段式，不堆功能</td>
+          </tr>
+          <tr>
+            <td><code>/discover</code></td>
+            <td>
+              两级：先选「旅游 / 周末安排」，再进对应决策流。
+              带 <code>?q=</code> 且场景模糊时走 <strong>ClarifyFlow</strong> 澄清
+              （旅游 / 周末 / 换个说法）
+            </td>
+            <td><span class="dot ok"></span>有明确返回路径</td>
+          </tr>
+          <tr>
+            <td><code>/discover/travel</code></td>
+            <td>4 个入口：不知道去哪 → quiz、有几个备选 → compare、随便抽 → random、已决定 → 新建</td>
+            <td><span class="dot ok"></span></td>
+          </tr>
+          <tr>
+            <td><code>/discover/weekend</code></td>
+            <td>周末决策入口：去哪玩 / 做什么</td>
+            <td><span class="dot ok"></span></td>
+          </tr>
+          <tr>
+            <td><code>/weekend</code></td>
+            <td>
+              4 种模式（去哪玩 / 做什么 / 附近看看 / 从收藏中选）→ 真实高德 POI →
+              最多 3 个候选卡；选中后「直接去 / 加入计划 / 帮我安排一下」；
+              有计划时显示清单 + 查看完整安排
+            </td>
+            <td><span class="dot ok"></span>默认轻量</td>
+          </tr>
+          <tr>
+            <td><code>/quiz</code></td>
+            <td>9 问测评；<code>?q=</code> 预填出发地与范围 + 上下文提示条</td>
+            <td><span class="dot ok"></span>已明确目的地时不再进此页</td>
+          </tr>
+          <tr>
+            <td><code>/destinations</code></td>
+            <td>3 个推荐结果；<code>?q=</code> 按名称 / 国家 / 省份 / 标签过滤</td>
+            <td><span class="dot ok"></span>承接「想去日本」类输入</td>
+          </tr>
+          <tr>
+            <td><code>/destinations/:id</code></td>
+            <td>目的地详情 + <strong>真实高德天气条</strong>（国内）+ POI 加入行程池</td>
+            <td><span class="dot ok"></span>海外无天气 → 优雅隐藏</td>
+          </tr>
+          <tr>
+            <td><code>/compare</code></td>
+            <td><code>?q=</code> 自动挑出候选并排对比：分数 / 预算 / 天数 / 交通 / 优缺点</td>
+            <td><span class="dot ok"></span></td>
+          </tr>
+          <tr>
+            <td><code>/random</code></td>
+            <td><code>?q=</code> 预置抽签范围（国内 / 海外 / 某国），不想答题直接抽</td>
+            <td><span class="dot ok"></span></td>
+          </tr>
+          <tr>
+            <td><code>/trips/new</code></td>
+            <td><code>?q=</code> 解析目的地预填，四个字段即可创建</td>
+            <td><span class="dot ok"></span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- 执行层 -->
+  <section id="exec">
+    <span class="sec-label">Execution Layer</span>
+    <h2>执行层页面与交互</h2>
+    <p class="sec-desc">
+      周末执行层是本轮新增，与旅行的「行程」平级——两者都在一级导航里有入口。
+    </p>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th style="width:26%">页面</th><th style="width:52%">交互</th><th style="width:22%">状态</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>/weekend/plan</code><span class="new-badge">NEW</span></td>
+            <td>
+              地图（有真实经纬度自动切高德）+ 时间线（出发 / 到达 / 离开）+
+              上移 / 下移 / 移出 + 导航去第一站 +「再挑一个」回决策层
+            </td>
+            <td><span class="dot ok"></span>已有一级导航入口</td>
+          </tr>
+          <tr>
+            <td><code>/trips/:id/itinerary</code></td>
+            <td>行程：按天编辑活动、拖拽排序、时长与预算联动</td>
+            <td><span class="dot ok"></span>原有成熟功能</td>
+          </tr>
+          <tr>
+            <td><code>/trips/:id/map</code></td>
+            <td>地图：地点打点、路线连线、选中联动</td>
+            <td><span class="dot ok"></span>原有</td>
+          </tr>
+          <tr>
+            <td><code>/trips/:id/plan</code></td>
+            <td>AI 规划：Action → 校验 → 预览 → 差异 → 提案 → 确认 → 落地</td>
+            <td><span class="dot ok"></span>原有</td>
+          </tr>
+          <tr>
+            <td><code>/trips/:id/budget</code></td>
+            <td>预算：分项统计、人均、超支提示</td>
+            <td><span class="dot ok"></span>原有</td>
+          </tr>
+          <tr>
+            <td><code>/trips/:id/checklist</code> 等</td>
+            <td>清单 / 预订 / 文件 / 成员 / 今天 / Journey / AI 助手</td>
+            <td><span class="dot ok"></span>原有，未改动</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- 全局能力 -->
+  <section id="global">
+    <span class="sec-label">Global</span>
+    <h2>全局能力</h2>
+    <p class="sec-desc">跨页面生效的基础交互与入口设计。</p>
+
+    <div class="cards">
+      <div class="card">
+        <h4>一级导航</h4>
+        <p>发现 / 首页 / <strong>周末</strong> / 行程 / 地图 / 预算 / 更多。移动端底部 6 格。周末与旅行「行程」平级。</p>
+      </div>
+      <div class="card">
+        <h4>周末入口智能跳转</h4>
+        <p>这周末有计划 → 直达 <code>/weekend/plan</code>（执行层 + 地图）；还没计划 → 进 <code>/weekend</code>（决策层）。</p>
+      </div>
+      <div class="card">
+        <h4>一句话意图路由</h4>
+        <p>输入框不要求先选场景，关键词识别后直接跳到对应页面并触发候选生成，不调用 LLM，零延迟。</p>
+      </div>
+      <div class="card">
+        <h4>语音输入</h4>
+        <p>Web Speech API 实时回填文本；不支持的浏览器给出提示而非报错——语音只是输入方式，不是壁垒。</p>
+      </div>
+      <div class="card">
+        <h4>ContextHint 上下文提示</h4>
+        <p>目标页顶部显示「系统听懂了什么」，并提供「换个说法」，避免黑盒跳转。</p>
+      </div>
+      <div class="card">
+        <h4>ClarifyFlow 澄清</h4>
+        <p>意图模糊时给出「旅游 / 周末安排 / 换个说法」三个出口，带着原始输入继续走。</p>
+      </div>
+      <div class="card">
+        <h4>帮我安排一下</h4>
+        <p>按地点类型建议出发时间、按距离建议交通方式，展开「出发 / 路上 / 停留」三栏 + 高德路线规划入口。</p>
+      </div>
+      <div class="card">
+        <h4>真实天气（AMap）</h4>
+        <p>后端聚合高德 regeo → 天气预报，映射为结构化数据；未配置 Key 或海外目的地时优雅降级为空。</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 意图路由 -->
+  <section id="intent">
+    <span class="sec-label">Intent Routing</span>
+    <h2>意图路由速查</h2>
+    <p class="sec-desc">首页输入框的落点规则。已明确目的地时不再进测评页。</p>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th style="width:44%">输入示例</th><th style="width:56%">落点</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>这周末想出去，但不想太累</td><td><code>/weekend?mode=place&amp;energy=near</code>（过滤 &gt;5km 候选）</td></tr>
+          <tr><td>今晚想吃点不一样的</td><td><code>/weekend?mode=activity</code></td></tr>
+          <tr><td>下个月想去日本</td><td><code>/destinations?q=…</code> → 直接给推荐<strong>（不再进测评）</strong></td></tr>
+          <tr><td>下个月想去北京旅游</td><td><code>/destinations?q=…</code></td></tr>
+          <tr><td>下个月想出门，但不知道去哪</td><td><code>/quiz?q=…</code>（纯模糊才进测评）</td></tr>
+          <tr><td>大理和丽江选哪个</td><td><code>/compare?q=…</code> 自动挑出候选对比</td></tr>
+          <tr><td>随便抽一个地方</td><td><code>/random?q=…</code></td></tr>
+          <tr><td>随便走走</td><td><code>/discover?q=…</code> → ClarifyFlow 澄清</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- 验证 -->
+  <section id="status">
+    <span class="sec-label">Verification</span>
+    <h2>验证状态</h2>
+
+    <div class="stats">
+      <div class="stat"><b>✅</b><span>TypeScript 类型检查</span></div>
+      <div class="stat"><b>✅</b><span>生产构建</span></div>
+      <div class="stat"><b>187</b><span>冒烟断言全绿</span></div>
+      <div class="stat"><b>0</b><span>控制台报错（视觉回归）</span></div>
+    </div>
+
+    <div class="cards">
+      <div class="card">
+        <h4>冒烟测试构成</h4>
+        <p>52 logic + 60 phase0 + 17 rehydrate + 26 phase1 + 24 intent + 8 query</p>
+      </div>
+      <div class="card">
+        <h4>视觉回归</h4>
+        <p>puppeteer + 系统 Chrome，覆盖首页、发现、周末、周末计划、目的地等改动页</p>
+      </div>
+      <div class="card">
+        <h4>数据迁移</h4>
+        <p>store v1 → v2，localStorage key 保持不变，兼容历史版本快照，老用户行程不会被覆盖</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 已知问题 -->
+  <section id="known">
+    <span class="sec-label">Known Issues</span>
+    <h2>已知问题与后续</h2>
+
+    <ul class="notes">
+      <li>
+        <span class="dot warn"></span><b>favicon.ico 404</b>
+        <span class="muted">—— <code>public/</code> 目录为空，未放入图标。无功能影响。</span>
+      </li>
+      <li>
+        <span class="dot warn"></span><b>Journey 照片数显示为 0</b>
+        <span class="muted">—— MockMap 中 photoCount 为硬编码，非本轮引入。</span>
+      </li>
+      <li>
+        <span class="dot warn"></span><b>高德 POI 偶发 502</b>
+        <span class="muted">—— QPS 限流导致。已加 150ms 节流 + 早停 + 单次重试，页面不白屏。</span>
+      </li>
+      <li>
+        <span class="dot off"></span><b>高德天气仅覆盖国内</b>
+        <span class="muted">—— 海外目的地返回 INVALID_PARAMS，天气条自动隐藏，属预期行为。</span>
+      </li>
+      <li>
+        <span class="dot off"></span><b>React Router v7 future flag 警告</b>
+        <span class="muted">—— 仅控制台提示，无功能影响。</span>
+      </li>
+    </ul>
+
+    <h3 style="margin: 28px 0 10px; font-size: 17px;">后续候选</h3>
+    <ul class="notes">
+      <li><b>多轮对话式 ClarifyFlow</b> <span class="muted">—— 目前是澄清入口，尚未做成多轮对话。</span></li>
+      <li><b>「生活即时」场景</b> <span class="muted">—— 架构方案中的第三场景（此刻 / 附近）尚未展开。</span></li>
+      <li><b>周末计划与旅行行程的互通</b> <span class="muted">—— 目前两条执行链互相独立。</span></li>
+    </ul>
+  </section>
+
+</main>
+
+<footer>
+  Trip OS · 功能与交互总览 · 生成于开发会话终态
+</footer>
+
+</body>
+</html>

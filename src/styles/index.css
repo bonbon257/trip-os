@@ -1,0 +1,141 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: light;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-paper text-ink antialiased;
+    background-image: linear-gradient(to right, rgba(17, 17, 17, 0.045) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(17, 17, 17, 0.045) 1px, transparent 1px);
+    background-size: 24px 24px;
+    font-feature-settings: 'tnum' 1;
+  }
+
+  ::selection {
+    background: #7c5cff22;
+  }
+
+  input,
+  select,
+  textarea,
+  button {
+    font: inherit;
+  }
+
+  input[type='date'],
+  input[type='time'] {
+    @apply rounded-lg border-[1.5px] border-ink/15 bg-white px-3 py-2;
+  }
+
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(17, 17, 17, 0.18);
+    border-radius: 8px;
+  }
+}
+
+@layer components {
+  /* 手帐感卡片：黑描边 + 硬边阴影 + 圆角 */
+  .card {
+    @apply rounded-card border-[1.5px] border-ink bg-white shadow-note;
+  }
+
+  .card-quiet {
+    @apply rounded-card border-[1.5px] border-ink/12 bg-white/70;
+  }
+
+  .card-dashed {
+    @apply rounded-card border-[1.5px] border-dashed border-ink/25 bg-white/50;
+  }
+
+  .pad {
+    @apply px-4 py-4 sm:px-6 sm:py-5;
+  }
+
+  .label {
+    @apply text-[11px] font-semibold uppercase tracking-[0.14em] text-inkFaint;
+  }
+
+  .h1 {
+    @apply text-[28px] font-extrabold leading-tight tracking-tight sm:text-[36px];
+  }
+
+  .h2 {
+    @apply text-[19px] font-bold leading-snug sm:text-[22px];
+  }
+
+  .h3 {
+    @apply text-[15px] font-bold leading-snug;
+  }
+
+  .muted {
+    @apply text-[13px] leading-relaxed text-inkSoft;
+  }
+
+  .divider {
+    @apply h-px w-full bg-ink/10;
+  }
+
+  .focus-ring {
+    @apply outline-none ring-offset-2 ring-offset-paper focus-visible:ring-2 focus-visible:ring-violet/60;
+  }
+
+  .sticky-note {
+    @apply rounded-card border-[1.5px] border-ink bg-amber/25 shadow-note;
+  }
+}
+
+@layer utilities {
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .grain {
+    background-image: radial-gradient(rgba(17, 17, 17, 0.08) 1px, transparent 1px);
+    background-size: 6px 6px;
+  }
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.animate-pop {
+  animation: pop-in 0.18s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+}
+
+@keyframes slide-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: none;
+  }
+}
+
+.animate-sheet {
+  animation: slide-up 0.22s cubic-bezier(0.2, 0.9, 0.3, 1);
+}

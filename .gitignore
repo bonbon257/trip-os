@@ -1,0 +1,26 @@
+node_modules
+dist
+*.tsbuildinfo
+
+# 密钥：API key 只放在这里，绝不能带 VITE_ 前缀（那会打进前端 bundle）
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# 运行时通过设置页写入的持久化配置（含密钥，不可提交）
+server/.runtime-config.json
+.runtime-config.json
+
+.DS_Store
+.vite
+
+# 常驻开发服务的 pid 文件
+.dev.pid
+.dev.pid.*
+
+# Vite 构建时产生的临时配置缓存
+vite.config.ts.timestamp-*.mjs
+
+# 日志
+*.log

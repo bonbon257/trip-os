@@ -1,0 +1,376 @@
+#!/usr/bin/env python3
+"""
+从高德行政区划数据生成国内城市画像库
+────────────────────────────────────────────────────────────
+用法：
+  python3 scripts/build-cities.py             # 用缓存的 amap-cities.json
+  python3 scripts/build-cities.py --fetch     # 重新从高德拉
+
+产出：src/data/cities-cn.ts
+
+设计原则：
+  1. 城市名单来自高德（权威、全量、含经纬度），不是手写
+  2. 标签用「省份规则 + 精选城市精修」两层生成，保证每个城市都有画像
+  3. 预留 LLM 精修接口（scripts/enrich-cities.py），拿到模型 key 后可批量精修
+  4. 运行时推荐仍走结构化评分，不把推荐交给模型 —— 保持可解释、可复现
+"""
+import json
+import pathlib
+import re
+import sys
+import urllib.request
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+CACHE = pathlib.Path("/tmp/amap-cities.json")
+OUT = ROOT / "src" / "data" / "cities-cn.ts"
+
+AMAP_KEY = "e795d5fe98979793def614c8b20388e0"
+AMAP_DISTRICT = "https://restapi.amap.com/v3/config/district"
+
+# ── 省份 → 基础画像 ────────────────────────────────────────────
+# tags: 与 INTERESTS 对齐（chill/food/shopping/nature/citywalk/coffee/
+#       architecture/art/museum/photo/nightlife/themePark/niche/outdoor/onsen/island）
+# season: 最佳旅行月份
+# cost: 每日消费档 1 低 2 中 3 高
+PROVINCE_PROFILE = {
+    "云南": dict(tags=["nature", "photo", "niche", "outdoor", "coffee", "food"], cost=1, season=[3, 4, 5, 9, 10, 11], region="西南"),
+    "贵州": dict(tags=["nature", "photo", "niche", "outdoor", "food"], cost=1, season=[4, 5, 6, 9, 10], region="西南"),
+    "四川": dict(tags=["nature", "food", "photo", "outdoor", "niche", "citywalk"], cost=2, season=[3, 4, 5, 9, 10], region="西南"),
+    "重庆": dict(tags=["food", "nightlife", "photo", "citywalk", "niche"], cost=2, season=[3, 4, 5, 9, 10, 11], region="西南"),
+    "西藏": dict(tags=["nature", "photo", "outdoor", "niche"], cost=2, season=[5, 6, 7, 8, 9], region="西南"),
+    "青海": dict(tags=["nature", "photo", "outdoor", "niche"], cost=2, season=[6, 7, 8, 9], region="西北"),
+    "新疆": dict(tags=["nature", "photo", "outdoor", "niche", "food"], cost=2, season=[6, 7, 8, 9], region="西北"),
+    "甘肃": dict(tags=["nature", "photo", "niche", "architecture", "museum"], cost=1, season=[5, 6, 7, 8, 9], region="西北"),
+    "宁夏": dict(tags=["nature", "photo", "niche", "food"], cost=1, season=[5, 6, 7, 8, 9], region="西北"),
+    "内蒙古": dict(tags=["nature", "photo", "outdoor", "niche"], cost=2, season=[6, 7, 8, 9], region="华北"),
+    "陕西": dict(tags=["architecture", "museum", "food", "photo", "citywalk"], cost=2, season=[3, 4, 5, 9, 10], region="西北"),
+    "山西": dict(tags=["architecture", "museum", "photo", "niche"], cost=1, season=[4, 5, 9, 10], region="华北"),
+    "河南": dict(tags=["architecture", "museum", "photo", "food"], cost=1, season=[4, 5, 9, 10], region="华中"),
+    "湖北": dict(tags=["nature", "food", "photo", "citywalk", "museum"], cost=2, season=[3, 4, 5, 9, 10], region="华中"),
+    "湖南": dict(tags=["nature", "food", "photo", "nightlife", "niche"], cost=2, season=[3, 4, 5, 9, 10], region="华中"),
+    "江西": dict(tags=["nature", "photo", "niche", "architecture"], cost=1, season=[3, 4, 5, 9, 10], region="华东"),
+    "江苏": dict(tags=["citywalk", "architecture", "food", "museum", "coffee"], cost=2, season=[3, 4, 5, 9, 10, 11], region="华东"),
+    "浙江": dict(tags=["citywalk", "nature", "food", "coffee", "photo", "niche"], cost=2, season=[3, 4, 5, 9, 10, 11], region="华东"),
+    "上海": dict(tags=["citywalk", "shopping", "coffee", "art", "museum", "food", "architecture"], cost=3, season=[3, 4, 5, 9, 10, 11], region="华东"),
+    "安徽": dict(tags=["nature", "photo", "niche", "architecture", "food"], cost=1, season=[3, 4, 5, 9, 10], region="华东"),
+    "福建": dict(tags=["nature", "food", "photo", "niche", "citywalk", "island"], cost=2, season=[3, 4, 5, 9, 10, 11], region="华东"),
+    "山东": dict(tags=["nature", "food", "photo", "island", "architecture"], cost=2, season=[4, 5, 6, 9, 10], region="华东"),
+    "北京": dict(tags=["architecture", "museum", "food", "citywalk", "photo", "shopping"], cost=3, season=[4, 5, 9, 10], region="华北"),
+    "天津": dict(tags=["architecture", "food", "citywalk", "photo", "museum"], cost=2, season=[4, 5, 9, 10], region="华北"),
+    "河北": dict(tags=["nature", "architecture", "photo", "outdoor"], cost=1, season=[4, 5, 6, 9, 10], region="华北"),
+    "广东": dict(tags=["food", "citywalk", "shopping", "themePark", "island", "nightlife"], cost=2, season=[3, 4, 10, 11, 12], region="华南"),
+    "广西": dict(tags=["nature", "photo", "niche", "food", "island"], cost=1, season=[3, 4, 5, 9, 10, 11], region="华南"),
+    "海南": dict(tags=["island", "chill", "nature", "photo", "food"], cost=2, season=[10, 11, 12, 1, 2, 3], region="华南"),
+    "黑龙江": dict(tags=["nature", "photo", "outdoor", "niche", "onsen"], cost=2, season=[1, 2, 6, 7, 8, 12], region="东北"),
+    "吉林": dict(tags=["nature", "photo", "outdoor", "onsen", "niche"], cost=2, season=[1, 2, 6, 7, 8, 12], region="东北"),
+    "辽宁": dict(tags=["nature", "food", "photo", "island", "onsen"], cost=2, season=[5, 6, 7, 8, 9, 10], region="东北"),
+    "香港": dict(tags=["citywalk", "shopping", "food", "nightlife", "art"], cost=3, season=[3, 4, 10, 11, 12], region="华南"),
+    "澳门": dict(tags=["citywalk", "food", "architecture", "shopping"], cost=3, season=[3, 4, 10, 11, 12], region="华南"),
+    "台湾": dict(tags=["food", "nature", "citywalk", "photo", "niche"], cost=2, season=[3, 4, 5, 9, 10, 11], region="华东"),
+}
+
+# ── 精选城市精修（覆盖/增强省份规则）────────────────────────────
+# 只列真正需要单独标注的热门目的地，其余走省份规则
+CURATED = {
+    "三亚市": dict(tags=["island", "chill", "nature", "photo", "food"], cost=3, days=(4, 7), intensity="low", season=[10, 11, 12, 1, 2, 3], highlights=["亚龙湾", "蜈支洲岛", "后海村", "天涯海角", "第一市场海鲜"]),
+    "丽江市": dict(tags=["niche", "photo", "nature", "citywalk", "coffee"], cost=2, days=(3, 5), intensity="low", season=[3, 4, 5, 9, 10], highlights=["丽江古城", "玉龙雪山", "束河古镇", "拉市海", "蓝月谷"]),
+    "大理白族自治州": dict(tags=["chill", "nature", "photo", "coffee", "niche"], cost=1, days=(4, 7), intensity="low", season=[3, 4, 5, 9, 10], highlights=["洱海环湖", "大理古城", "双廊", "苍山", "喜洲古镇"]),
+    "西双版纳傣族自治州": dict(tags=["nature", "photo", "niche", "food"], cost=2, days=(4, 6), intensity="medium", season=[11, 12, 1, 2, 3, 4], highlights=["告庄西双景", "中科院植物园", "野象谷", "曼听公园", "傣族园"]),
+    "迪庆藏族自治州": dict(tags=["nature", "outdoor", "photo", "niche"], cost=2, days=(5, 8), intensity="high", season=[5, 6, 9, 10], highlights=["普达措", "松赞林寺", "虎跳峡", "梅里雪山", "独克宗古城"]),
+    "杭州市": dict(tags=["citywalk", "nature", "coffee", "food", "photo", "niche"], cost=2, days=(3, 5), intensity="low", season=[3, 4, 5, 9, 10, 11], highlights=["西湖", "龙井村", "天目里", "良渚", "运河老街"]),
+    "成都市": dict(tags=["food", "chill", "citywalk", "coffee", "shopping", "museum", "niche"], cost=1, days=(3, 5), intensity="low", season=[3, 4, 5, 9, 10, 11], highlights=["玉林路", "熊猫基地", "金沙遗址", "青城山", "宽窄巷子"]),
+    "重庆市": dict(tags=["food", "nightlife", "photo", "niche", "citywalk"], cost=2, days=(3, 4), intensity="medium", season=[3, 4, 5, 9, 10, 11], highlights=["洪崖洞", "李子坝", "磁器口", "长江索道", "南山一棵树"]),
+    "西安市": dict(tags=["architecture", "museum", "food", "photo", "citywalk"], cost=2, days=(3, 5), intensity="medium", season=[3, 4, 5, 9, 10], highlights=["兵马俑", "城墙", "回民街", "陕西历史博物馆", "大唐不夜城"]),
+    "北京市": dict(tags=["architecture", "museum", "food", "citywalk", "photo", "shopping"], cost=3, days=(4, 6), intensity="medium", season=[4, 5, 9, 10], highlights=["故宫", "胡同", "798", "长城", "国家博物馆"]),
+    "上海市": dict(tags=["citywalk", "shopping", "coffee", "art", "museum", "food", "architecture"], cost=3, days=(3, 5), intensity="medium", season=[3, 4, 5, 9, 10, 11], highlights=["武康路", "外滩", "西岸美术馆", "田子坊", "迪士尼"]),
+    "广州市": dict(tags=["food", "citywalk", "shopping", "architecture"], cost=2, days=(3, 4), intensity="medium", season=[3, 4, 10, 11, 12], highlights=["早茶", "沙面", "陈家祠", "北京路", "广州塔"]),
+    "深圳市": dict(tags=["citywalk", "shopping", "themePark", "food", "nature"], cost=3, days=(3, 4), intensity="medium", season=[3, 4, 10, 11, 12], highlights=["华侨城", "大梅沙", "南头古城", "世界之窗", "深圳湾"]),
+    "厦门市": dict(tags=["citywalk", "photo", "coffee", "food", "niche", "island"], cost=2, days=(3, 5), intensity="low", season=[3, 4, 5, 9, 10, 11], highlights=["鼓浪屿", "沙坡尾", "环岛路", "曾厝垵", "八市"]),
+    "青岛市": dict(tags=["nature", "food", "photo", "citywalk", "island"], cost=2, days=(3, 5), intensity="low", season=[5, 6, 7, 8, 9, 10], highlights=["八大关", "栈桥", "崂山", "啤酒街", "小鱼山"]),
+    "大连市": dict(tags=["nature", "food", "photo", "island", "citywalk"], cost=2, days=(3, 5), intensity="low", season=[5, 6, 7, 8, 9, 10], highlights=["星海广场", "滨海路", "旅顺", "老虎滩", "俄罗斯风情街"]),
+    "哈尔滨市": dict(tags=["nature", "photo", "niche", "architecture", "outdoor"], cost=2, days=(3, 5), intensity="medium", season=[1, 2, 12, 7, 8], highlights=["冰雪大世界", "中央大街", "索菲亚教堂", "亚布力", "太阳岛"]),
+    "长春市": dict(tags=["nature", "photo", "niche", "museum"], cost=2, days=(3, 4), intensity="medium", season=[1, 2, 12, 7, 8], highlights=["净月潭", "伪满皇宫", "长影", "南湖"]),
+    "沈阳市": dict(tags=["architecture", "museum", "food", "photo"], cost=2, days=(3, 4), intensity="medium", season=[4, 5, 9, 10], highlights=["故宫", "中街", "北陵", "老北市"]),
+    "苏州市": dict(tags=["architecture", "citywalk", "coffee", "photo", "niche"], cost=2, days=(3, 4), intensity="low", season=[3, 4, 5, 9, 10, 11], highlights=["拙政园", "平江路", "周庄", "同里", "金鸡湖"]),
+    "南京市": dict(tags=["architecture", "museum", "food", "citywalk", "photo"], cost=2, days=(3, 4), intensity="medium", season=[3, 4, 5, 9, 10, 11], highlights=["中山陵", "夫子庙", "先锋书店", "明孝陵", "颐和路"]),
+    "扬州市": dict(tags=["architecture", "food", "citywalk", "coffee", "niche"], cost=1, days=(2, 3), intensity="low", season=[3, 4, 5, 9, 10, 11], highlights=["瘦西湖", "东关街", "个园", "皮市街"]),
+    "无锡市": dict(tags=["nature", "photo", "architecture", "food"], cost=2, days=(2, 3), intensity="low", season=[3, 4, 5, 9, 10, 11], highlights=["鼋头渚", "灵山", "南禅寺", "拈花湾"]),
+    "黄山市": dict(tags=["nature", "photo", "outdoor", "niche", "architecture"], cost=2, days=(3, 5), intensity="high", season=[3, 4, 5, 9, 10, 11], highlights=["黄山", "宏村", "西递", "屯溪老街", "呈坎"]),
+    "桂林市": dict(tags=["nature", "photo", "outdoor", "niche"], cost=1, days=(3, 5), intensity="medium", season=[4, 5, 6, 9, 10], highlights=["漓江", "阳朔", "遇龙河", "龙脊梯田", "象鼻山"]),
+    "张家界市": dict(tags=["nature", "photo", "outdoor", "niche"], cost=2, days=(3, 5), intensity="high", season=[4, 5, 6, 9, 10], highlights=["张家界国家森林公园", "天门山", "玻璃栈道", "凤凰古城"]),
+    "长沙市": dict(tags=["food", "nightlife", "citywalk", "photo", "museum"], cost=2, days=(2, 4), intensity="medium", season=[3, 4, 5, 9, 10, 11], highlights=["文和友", "岳麓山", "湖南博物院", "太平老街", "谢子龙影像馆"]),
+    "武汉市": dict(tags=["food", "citywalk", "museum", "photo", "nature"], cost=2, days=(3, 4), intensity="medium", season=[3, 4, 5, 9, 10, 11], highlights=["黄鹤楼", "东湖", "昙华林", "湖北省博物馆", "江汉路"]),
+    "郑州市": dict(tags=["museum", "architecture", "food", "photo"], cost=1, days=(2, 3), intensity="medium", season=[4, 5, 9, 10], highlights=["河南博物院", "少林寺", "二七广场", "黄河风景区"]),
+    "洛阳市": dict(tags=["architecture", "museum", "photo", "niche"], cost=1, days=(3, 4), intensity="medium", season=[4, 5, 9, 10], highlights=["龙门石窟", "白马寺", "老君山", "洛邑古城"]),
+    "济南市": dict(tags=["nature", "citywalk", "food", "photo"], cost=1, days=(2, 3), intensity="low", season=[4, 5, 6, 9, 10], highlights=["趵突泉", "大明湖", "千佛山", "芙蓉街"]),
+    "太原市": dict(tags=["architecture", "museum", "food", "photo"], cost=1, days=(2, 3), intensity="medium", season=[4, 5, 9, 10], highlights=["晋祠", "平遥古城", "山西博物院", "柳巷"]),
+    "昆明市": dict(tags=["nature", "food", "citywalk", "photo", "coffee"], cost=1, days=(3, 5), intensity="low", season=[3, 4, 5, 9, 10, 11], highlights=["滇池", "石林", "翠湖", "斗南花市", "文林街"]),
+    "贵阳市": dict(tags=["food", "nature", "photo", "niche", "citywalk"], cost=1, days=(2, 4), intensity="medium", season=[4, 5, 6, 9, 10], highlights=["青岩古镇", "甲秀楼", "黔灵山", "花溪"]),
+    "南宁市": dict(tags=["food", "nature", "photo", "niche"], cost=1, days=(2, 3), intensity="low", season=[3, 4, 5, 9, 10, 11], highlights=["青秀山", "邕江", "三街两巷", "德天瀑布"]),
+    "北海市": dict(tags=["island", "chill", "nature", "food", "photo"], cost=1, days=(3, 4), intensity="low", season=[4, 5, 9, 10, 11], highlights=["银滩", "涠洲岛", "老街", "侨港"]),
+    "海口市": dict(tags=["island", "chill", "food", "citywalk", "nature"], cost=2, days=(3, 4), intensity="low", season=[10, 11, 12, 1, 2, 3], highlights=["骑楼老街", "假日海滩", "火山口", "海南省博物馆"]),
+    "福州市": dict(tags=["citywalk", "food", "niche", "nature", "architecture"], cost=2, days=(2, 4), intensity="low", season=[3, 4, 5, 9, 10, 11], highlights=["三坊七巷", "鼓山", "平潭", "上下杭", "烟台山"]),
+    "泉州市": dict(tags=["niche", "architecture", "food", "citywalk", "photo"], cost=1, days=(3, 4), intensity="low", season=[3, 4, 5, 9, 10, 11], highlights=["开元寺", "西街", "蟳埔村", "崇武古城", "洛阳桥"]),
+    "厦门市_extra": None,
+    "合肥市": dict(tags=["citywalk", "museum", "food", "nature"], cost=1, days=(2, 3), intensity="low", season=[3, 4, 5, 9, 10, 11], highlights=["三河古镇", "包公园", "罍街", "科学岛"]),
+    "南昌市": dict(tags=["food", "architecture", "museum", "photo"], cost=1, days=(2, 3), intensity="medium", season=[3, 4, 5, 9, 10], highlights=["滕王阁", "八一起义纪念馆", "秋水广场", "绳金塔"]),
+    "九江市": dict(tags=["nature", "photo", "outdoor", "niche"], cost=1, days=(3, 4), intensity="medium", season=[4, 5, 6, 9, 10], highlights=["庐山", "鄱阳湖", "白鹿洞书院", "东林寺"]),
+    "上饶市": dict(tags=["nature", "photo", "niche", "architecture"], cost=1, days=(3, 4), intensity="medium", season=[3, 4, 5, 9, 10, 11], highlights=["婺源", "三清山", "篁岭", "龟峰"]),
+    "景德镇市": dict(tags=["art", "niche", "coffee", "citywalk", "photo"], cost=1, days=(2, 4), intensity="low", season=[3, 4, 5, 9, 10, 11], highlights=["陶溪川", "御窑博物馆", "三宝村", "瑶里"]),
+    "拉萨市": dict(tags=["nature", "photo", "niche", "architecture"], cost=2, days=(4, 7), intensity="medium", season=[5, 6, 7, 8, 9], highlights=["布达拉宫", "大昭寺", "纳木错", "八廓街", "色拉寺"]),
+    "乌鲁木齐市": dict(tags=["nature", "food", "photo", "niche"], cost=2, days=(4, 6), intensity="medium", season=[6, 7, 8, 9], highlights=["天山天池", "大巴扎", "喀纳斯", "赛里木湖"]),
+    "兰州市": dict(tags=["food", "nature", "museum", "photo"], cost=1, days=(2, 3), intensity="medium", season=[5, 6, 7, 8, 9], highlights=["牛肉面", "黄河母亲", "甘肃省博物馆", "张掖丹霞"]),
+    "西宁市": dict(tags=["nature", "photo", "niche", "food"], cost=1, days=(3, 5), intensity="medium", season=[6, 7, 8, 9], highlights=["青海湖", "塔尔寺", "茶卡盐湖", "莫家街"]),
+    "银川市": dict(tags=["nature", "photo", "niche", "architecture"], cost=1, days=(2, 4), intensity="medium", season=[5, 6, 7, 8, 9], highlights=["沙湖", "西夏王陵", "镇北堡", "沙坡头"]),
+    "呼和浩特市": dict(tags=["nature", "photo", "niche", "food"], cost=1, days=(2, 4), intensity="medium", season=[6, 7, 8, 9], highlights=["大召寺", "希拉穆仁草原", "内蒙古博物院", "塞上老街"]),
+    "敦煌市": dict(tags=["architecture", "museum", "photo", "nature", "niche"], cost=2, days=(3, 4), intensity="medium", season=[5, 6, 7, 8, 9], highlights=["莫高窟", "鸣沙山月牙泉", "雅丹", "玉门关"]),
+    "酒泉市": dict(tags=["nature", "photo", "niche", "architecture"], cost=2, days=(3, 5), intensity="medium", season=[5, 6, 7, 8, 9], highlights=["敦煌莫高窟", "鸣沙山", "嘉峪关", "七彩丹霞"]),
+    "喀什地区": dict(tags=["niche", "photo", "food", "architecture"], cost=1, days=(4, 6), intensity="medium", season=[5, 6, 7, 8, 9, 10], highlights=["喀什老城", "香妃园", "帕米尔高原", "大巴扎"]),
+    "阿坝藏族羌族自治州": dict(tags=["nature", "photo", "outdoor", "niche"], cost=2, days=(4, 6), intensity="high", season=[6, 7, 8, 9, 10], highlights=["九寨沟", "黄龙", "四姑娘山", "若尔盖"]),
+    "甘孜藏族自治州": dict(tags=["nature", "photo", "outdoor", "niche"], cost=2, days=(5, 8), intensity="high", season=[5, 6, 9, 10], highlights=["稻城亚丁", "海螺沟", "色达", "新都桥"]),
+    "湘西土家族苗族自治州": dict(tags=["niche", "photo", "nature", "architecture"], cost=1, days=(3, 4), intensity="medium", season=[4, 5, 6, 9, 10], highlights=["凤凰古城", "芙蓉镇", "张家界", "矮寨大桥"]),
+    "秦皇岛市": dict(tags=["nature", "photo", "island", "food"], cost=1, days=(2, 4), intensity="low", season=[5, 6, 7, 8, 9], highlights=["北戴河", "山海关", "阿那亚", "鸽子窝"]),
+    "承德市": dict(tags=["architecture", "nature", "photo", "niche"], cost=1, days=(2, 4), intensity="medium", season=[5, 6, 7, 8, 9, 10], highlights=["避暑山庄", "外八庙", "金山岭长城", "塞罕坝"]),
+    "开封市": dict(tags=["architecture", "museum", "food", "photo"], cost=1, days=(2, 3), intensity="low", season=[4, 5, 9, 10], highlights=["清明上河园", "龙亭", "鼓楼夜市", "大相国寺"]),
+    "绍兴市": dict(tags=["citywalk", "niche", "food", "architecture", "coffee"], cost=1, days=(2, 3), intensity="low", season=[3, 4, 5, 9, 10, 11], highlights=["鲁迅故里", "沈园", "安昌古镇", "仓桥直街"]),
+    "嘉兴市": dict(tags=["niche", "architecture", "citywalk", "food"], cost=1, days=(2, 3), intensity="low", season=[3, 4, 5, 9, 10, 11], highlights=["乌镇", "西塘", "南湖", "月河"]),
+    "湖州市": dict(tags=["nature", "chill", "coffee", "photo", "niche"], cost=1, days=(2, 3), intensity="low", season=[3, 4, 5, 9, 10, 11], highlights=["莫干山", "南浔古镇", "安吉竹海", "太湖"]),
+    "舟山市": dict(tags=["island", "nature", "photo", "food", "chill"], cost=2, days=(3, 4), intensity="low", season=[4, 5, 6, 9, 10], highlights=["普陀山", "东极岛", "朱家尖", "嵊泗"]),
+    "烟台市": dict(tags=["nature", "food", "island", "photo"], cost=1, days=(2, 4), intensity="low", season=[5, 6, 7, 8, 9, 10], highlights=["蓬莱阁", "长岛", "养马岛", "金沙滩"]),
+    "威海市": dict(tags=["nature", "island", "chill", "photo", "food"], cost=1, days=(2, 4), intensity="low", season=[5, 6, 7, 8, 9, 10], highlights=["刘公岛", "那香海", "火炬八街", "成山头"]),
+    "珠海市": dict(tags=["island", "chill", "citywalk", "food", "nature"], cost=2, days=(2, 4), intensity="low", season=[3, 4, 10, 11, 12], highlights=["情侣路", "外伶仃岛", "长隆", "野狸岛"]),
+    "汕头市": dict(tags=["food", "niche", "citywalk", "photo"], cost=1, days=(2, 3), intensity="low", season=[3, 4, 10, 11, 12], highlights=["小公园", "南澳岛", "老妈宫戏台", "潮汕美食"]),
+    "潮州市": dict(tags=["food", "niche", "architecture", "citywalk"], cost=1, days=(2, 3), intensity="low", season=[3, 4, 10, 11, 12], highlights=["牌坊街", "广济桥", "韩文公祠", "龙湖古寨"]),
+    "惠州市": dict(tags=["nature", "island", "chill", "photo"], cost=1, days=(2, 4), intensity="low", season=[3, 4, 5, 9, 10, 11], highlights=["双月湾", "巽寮湾", "西湖", "罗浮山"]),
+    "清远市": dict(tags=["nature", "outdoor", "onsen", "photo"], cost=1, days=(2, 3), intensity="medium", season=[3, 4, 5, 9, 10, 11], highlights=["英西峰林", "古龙峡", "连州地下河", "温泉"]),
+    "韶关市": dict(tags=["nature", "photo", "outdoor", "niche"], cost=1, days=(2, 3), intensity="medium", season=[3, 4, 5, 9, 10, 11], highlights=["丹霞山", "南华寺", "珠玑巷", "乳源大峡谷"]),
+    "郴州市": dict(tags=["nature", "photo", "niche", "outdoor"], cost=1, days=(2, 3), intensity="medium", season=[4, 5, 6, 9, 10], highlights=["东江湖", "高椅岭", "莽山", "仰天湖"]),
+    "恩施土家族苗族自治州": dict(tags=["nature", "photo", "outdoor", "niche"], cost=1, days=(3, 5), intensity="high", season=[4, 5, 6, 9, 10], highlights=["恩施大峡谷", "腾龙洞", "屏山峡谷", "土司城"]),
+    "神农架林区": dict(tags=["nature", "outdoor", "photo", "niche"], cost=2, days=(3, 5), intensity="high", season=[5, 6, 7, 8, 9, 10], highlights=["神农顶", "大九湖", "官门山", "天生桥"]),
+    "宁波市": dict(tags=["citywalk", "food", "museum", "photo", "nature"], cost=2, days=(2, 3), intensity="low", season=[3, 4, 5, 9, 10, 11], highlights=["天一阁", "东钱湖", "老外滩", "溪口"]),
+    "温州市": dict(tags=["nature", "food", "photo", "niche"], cost=2, days=(2, 4), intensity="medium", season=[3, 4, 5, 9, 10, 11], highlights=["楠溪江", "雁荡山", "南麂岛", "五马街"]),
+    "台州市": dict(tags=["nature", "photo", "food", "niche"], cost=1, days=(2, 3), intensity="medium", season=[3, 4, 5, 9, 10, 11], highlights=["神仙居", "天台山", "温岭石塘", "大陈岛"]),
+    "金华市": dict(tags=["niche", "architecture", "food", "photo"], cost=1, days=(2, 3), intensity="low", season=[3, 4, 5, 9, 10, 11], highlights=["横店", "诸葛八卦村", "双龙洞", "古子城"]),
+    "丽水市": dict(tags=["nature", "photo", "niche", "outdoor"], cost=1, days=(2, 4), intensity="medium", season=[3, 4, 5, 9, 10, 11], highlights=["云和梯田", "缙云仙都", "古堰画乡", "松阳老屋"]),
+    "衢州市": dict(tags=["nature", "food", "niche", "architecture"], cost=1, days=(2, 3), intensity="medium", season=[3, 4, 5, 9, 10, 11], highlights=["江郎山", "廿八都", "根宫佛国", "水亭门"]),
+    "天津市": dict(tags=["architecture", "food", "citywalk", "photo", "museum"], cost=2, days=(2, 3), intensity="low", season=[4, 5, 9, 10], highlights=["五大道", "意风区", "瓷房子", "古文化街", "滨海图书馆"]),
+    "石家庄市": dict(tags=["architecture", "museum", "food", "nature"], cost=1, days=(2, 3), intensity="medium", season=[4, 5, 9, 10], highlights=["正定古城", "赵州桥", "河北博物院", "西柏坡"]),
+    "保定市": dict(tags=["nature", "architecture", "outdoor", "photo"], cost=1, days=(2, 3), intensity="medium", season=[4, 5, 6, 9, 10], highlights=["白洋淀", "野三坡", "直隶总督署", "白石山"]),
+    "大同市": dict(tags=["architecture", "museum", "photo", "niche"], cost=1, days=(2, 3), intensity="medium", season=[4, 5, 9, 10], highlights=["云冈石窟", "恒山", "悬空寺", "华严寺"]),
+    "平遥县": dict(tags=["architecture", "museum", "photo", "niche"], cost=1, days=(1, 2), intensity="low", season=[4, 5, 9, 10], highlights=["平遥古城", "日昇昌", "双林寺", "镇国寺"]),
+    "延安市": dict(tags=["architecture", "museum", "photo", "nature"], cost=1, days=(2, 3), intensity="medium", season=[4, 5, 9, 10], highlights=["宝塔山", "壶口瀑布", "枣园", "雨岔大峡谷"]),
+    "吐鲁番市": dict(tags=["nature", "food", "photo", "niche"], cost=1, days=(2, 3), intensity="medium", season=[5, 6, 7, 8, 9], highlights=["火焰山", "葡萄沟", "交河故城", "坎儿井"]),
+    "伊犁哈萨克自治州": dict(tags=["nature", "photo", "outdoor", "niche"], cost=2, days=(5, 8), intensity="medium", season=[6, 7, 8, 9], highlights=["那拉提", "喀拉峻", "赛里木湖", "独库公路"]),
+    "阿勒泰地区": dict(tags=["nature", "photo", "outdoor", "niche"], cost=2, days=(5, 7), intensity="high", season=[6, 7, 8, 9, 1, 2], highlights=["喀纳斯", "禾木", "白哈巴", "可可托海"]),
+    "林芝市": dict(tags=["nature", "photo", "outdoor", "niche"], cost=2, days=(4, 6), intensity="medium", season=[3, 4, 5, 9, 10], highlights=["雅鲁藏布大峡谷", "南迦巴瓦", "巴松措", "桃花沟"]),
+    "日喀则市": dict(tags=["nature", "photo", "niche", "architecture"], cost=2, days=(4, 6), intensity="high", season=[5, 6, 7, 8, 9], highlights=["扎什伦布寺", "珠峰大本营", "卡若拉冰川", "羊卓雍措"]),
+    "吉林市": dict(tags=["nature", "photo", "niche", "onsen"], cost=1, days=(2, 3), intensity="medium", season=[1, 2, 7, 8, 12], highlights=["雾凇岛", "松花湖", "北大壶", "蛟河红叶"]),
+    "牡丹江市": dict(tags=["nature", "photo", "niche", "outdoor"], cost=1, days=(2, 4), intensity="medium", season=[1, 2, 7, 8, 12], highlights=["雪乡", "镜泊湖", "亚布力", "横道河子"]),
+    "丹东市": dict(tags=["nature", "photo", "niche", "food"], cost=1, days=(2, 3), intensity="medium", season=[5, 6, 9, 10], highlights=["鸭绿江", "绿江村", "凤凰山", "河口断桥"]),
+    "本溪市": dict(tags=["nature", "photo", "niche", "outdoor"], cost=1, days=(2, 3), intensity="medium", season=[9, 10, 7, 8], highlights=["关门山红叶", "本溪水洞", "五女山", "汤沟"]),
+    "盘锦市": dict(tags=["nature", "photo", "niche", "food"], cost=1, days=(2, 3), intensity="low", season=[5, 6, 9, 10], highlights=["红海滩", "芦苇荡", "鼎翔", "辽河"]),
+}
+
+DEFAULT_PROFILE = dict(tags=["citywalk", "food", "photo"], cost=1, season=[4, 5, 9, 10], region="其他")
+
+# 消费档 → 每日花费区间（元/人/天，不含往返大交通）
+COST_RANGE = {
+    1: (260, 480),
+    2: (420, 680),
+    3: (680, 1080),
+}
+
+# 强度 → 建议天数
+def pick_days(intensity: str, is_capital: bool) -> tuple:
+    if is_capital:
+        return (3, 5) if intensity != "high" else (4, 6)
+    return (2, 4) if intensity != "high" else (3, 5)
+
+
+def strip_suffix(name: str) -> str:
+    """洛阳市 → 洛阳；大理白族自治州 → 大理；湘西土家族苗族自治州 → 湘西"""
+    for suf in ("特别行政区", "维吾尔自治区", "壮族自治区", "回族自治区", "土家族苗族自治州",
+                "藏族羌族自治州", "哈萨克自治州", "苗族自治州", "布依族苗族自治州",
+                "朝鲜族自治州", "彝族自治州", "白族自治州", "傣族自治州", "蒙古族自治州",
+                "哈尼族彝族自治州", "傈僳族自治州", "藏族自治州", "回族自治州",
+                "自治州", "地区", "市", "县", "盟"):
+        if name.endswith(suf) and len(name) > len(suf):
+            return name[: -len(suf)]
+    return name
+
+
+def province_of(prov_name: str) -> dict:
+    key = prov_name.replace("省", "").replace("市", "").replace("自治区", "").replace("特别行政区", "")
+    for k, v in PROVINCE_PROFILE.items():
+        if k in key or key in k:
+            return v
+    return DEFAULT_PROFILE
+
+
+def build():
+    if "--fetch" in sys.argv or not CACHE.exists():
+        print("从高德拉行政区划…")
+        url = f"{AMAP_DISTRICT}?key={AMAP_KEY}&keywords=中国&subdistrict=2&output=JSON"
+        with urllib.request.urlopen(url, timeout=30) as r:
+            data = json.load(r)
+        CACHE.write_text(json.dumps(data, ensure_ascii=False))
+        print(f"  缓存到 {CACHE}")
+    else:
+        data = json.loads(CACHE.read_text())
+
+    if data.get("status") != "1":
+        print("高德返回错误:", data.get("info"))
+        return 1
+
+    provinces = data["districts"][0]["districts"]
+    rows = []
+    seen = set()
+
+    for p in provinces:
+        pname = p["name"]
+        prof = province_of(pname)
+        for c in p.get("districts", []):
+            if c.get("level") != "city":
+                continue
+            full = c["name"]
+            short = strip_suffix(full)
+            if not short or short in seen:
+                continue
+            seen.add(short)
+
+            center = (c.get("center") or "").split(",")
+            lng = float(center[0]) if len(center) == 2 and center[0] else 0.0
+            lat = float(center[1]) if len(center) == 2 and center[1] else 0.0
+
+            cur = CURATED.get(full) or CURATED.get(short + "市")
+            is_capital = short in ("北京", "上海", "天津", "重庆", "广州", "成都", "杭州", "南京",
+                                   "武汉", "西安", "长沙", "郑州", "济南", "沈阳", "长春",
+                                   "哈尔滨", "石家庄", "太原", "呼和浩特", "兰州", "西宁",
+                                   "银川", "乌鲁木齐", "拉萨", "昆明", "贵阳", "南宁", "海口",
+                                   "福州", "南昌", "合肥")
+
+            if cur:
+                tags = cur["tags"]
+                cost = cur["cost"]
+                season = cur["season"]
+                days = cur["days"]
+                intensity = cur["intensity"]
+                highlights = cur["highlights"]
+                curated = True
+            else:
+                # 规则生成的城市只留 3 个核心标签。
+                # 给太多会让「什么都能沾一点」的普通地级市在匹配时占便宜。
+                tags = prof["tags"][:3]
+                cost = prof["cost"]
+                season = prof["season"]
+                # 自然/户外为主的城市强度高一点，城市漫游为主则低
+                intensity = "medium" if ("outdoor" in tags or "nature" in tags) else "low"
+                days = pick_days(intensity, is_capital)
+                highlights = []
+                curated = False
+
+            low, high = COST_RANGE[cost]
+            # 旅游吸引力：精修 1.0 / 省会 0.8 / 普通地级市 0.5
+            # 用于让用户偏好「小众探索」时能看到冷门目的地，
+            # 默认则优先推荐更有内容的目的地。
+            appeal = 1.0 if curated else (0.8 if is_capital else 0.5)
+            rows.append(dict(
+                appeal=appeal,
+                id="cn-" + (c.get("adcode") or short),
+                name=short,
+                fullName=full,
+                province=pname,
+                region=prof["region"],
+                lat=round(lat, 4),
+                lng=round(lng, 4),
+                adcode=c.get("adcode") or "",
+                tags=tags,
+                cost=cost,
+                dailyLow=low,
+                dailyHigh=high,
+                idealMin=days[0],
+                idealMax=days[1],
+                intensity=intensity,
+                season=season,
+                highlights=highlights,
+                curated=curated,
+                isCapital=is_capital,
+            ))
+
+    rows.sort(key=lambda r: (not r["curated"], not r["isCapital"], r["name"]))
+
+    # ── 生成 TS ──
+    def ts(v):
+        if isinstance(v, bool):
+            return "true" if v else "false"
+        if isinstance(v, (int, float)):
+            return str(v)
+        if isinstance(v, list):
+            return "[" + ", ".join(ts(x) for x in v) + "]"
+        s = str(v).replace("\\", "\\\\").replace("'", "\\'")
+        return "'" + s + "'"
+
+    lines = [
+        "// 本文件由 scripts/build-cities.py 自动生成，请勿手工编辑",
+        "// 数据来源：高德开放平台行政区划 API（全量地级市）",
+        f"// 共 {len(rows)} 个城市 · 生成时间见 git 提交记录",
+        "",
+        "export interface CnCity {",
+        "  id: string;",
+        "  name: string;",
+        "  fullName: string;",
+        "  province: string;",
+        "  region: string;",
+        "  lat: number;",
+        "  lng: number;",
+        "  adcode: string;",
+        "  tags: string[];",
+        "  cost: 1 | 2 | 3;",
+        "  dailyLow: number;",
+        "  dailyHigh: number;",
+        "  idealMin: number;",
+        "  idealMax: number;",
+        "  intensity: 'low' | 'medium' | 'high';",
+        "  season: number[];",
+        "  highlights: string[];",
+        "  curated: boolean;",
+        "  isCapital: boolean;",
+        "  /** 旅游吸引力 0.5(普通地级市) ~ 1.0(精修目的地) */",
+        "  appeal: number;",
+        "}",
+        "",
+        "export const CN_CITIES: CnCity[] = [",
+    ]
+    for r in rows:
+        fields = [
+            f"id: {ts(r['id'])}", f"name: {ts(r['name'])}", f"fullName: {ts(r['fullName'])}",
+            f"province: {ts(r['province'])}", f"region: {ts(r['region'])}",
+            f"lat: {ts(r['lat'])}", f"lng: {ts(r['lng'])}", f"adcode: {ts(r['adcode'])}",
+            f"tags: {ts(r['tags'])}", f"cost: {ts(r['cost'])}",
+            f"dailyLow: {ts(r['dailyLow'])}", f"dailyHigh: {ts(r['dailyHigh'])}",
+            f"idealMin: {ts(r['idealMin'])}", f"idealMax: {ts(r['idealMax'])}",
+            f"intensity: {ts(r['intensity'])}", f"season: {ts(r['season'])}",
+            f"highlights: {ts(r['highlights'])}", f"curated: {ts(r['curated'])}",
+            f"isCapital: {ts(r['isCapital'])}", f"appeal: {ts(r['appeal'])}",
+        ]
+        lines.append("  { " + ", ".join(fields) + " },")
+    lines.append("];")
+    lines.append("")
+    lines.append("export const CN_CITY_COUNT = CN_CITIES.length;")
+    lines.append("")
+    lines.append("/** 按名称索引，供详情页直接查 */")
+    lines.append("export const cnCityById = (id: string) => CN_CITIES.find((c) => c.id === id);")
+    lines.append("")
+
+    OUT.write_text("\n".join(lines), encoding="utf-8")
+
+    curated_count = sum(1 for r in rows if r["curated"])
+    print(f"生成 {OUT.relative_to(ROOT)}")
+    print(f"  城市总数 {len(rows)}")
+    print(f"  精修城市 {curated_count} · 规则生成 {len(rows) - curated_count}")
+    print(f"  文件大小 {OUT.stat().st_size / 1024:.0f} KB")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(build())

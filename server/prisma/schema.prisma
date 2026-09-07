@@ -1,0 +1,214 @@
+// Trip OS 数据模型（Prisma）
+// 数据库：SQLite 起步，迁 Postgres 时只改 provider 与 URL
+// 业务表与 src/types/index.ts 完全对齐
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ── 用户 ───────────────────────────────────────────────────
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  homeCity     String   @default("上海")
+  preferences  String?
+  createdAt    DateTime @default(now())
+  trips        Trip[]
+  files        FileAsset[]
+  state        UserState?
+}
+
+// 单条 blob 存整个 store —— 用于前端 store 整体迁到后端
+model UserState {
+  userId    String   @id
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  json      String   // JSON.stringify(window.db)
+  updatedAt DateTime @updatedAt
+}
+
+model Trip {
+  id              String   @id @default(cuid())
+  ownerId         String
+  owner           User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  title           String
+  destinationId   String
+  destinationName String
+  emoji           String
+  startDate       String
+  endDate         String
+  status          String
+  planningMode    String
+  totalBudget     Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  members   TripMember[]
+  days      Day[]
+  expenses  Expense[]
+  bookings  Booking[]
+  files     FileAsset[]
+  journals  Journal[]
+  checklists Checklist[]
+  profileJson String?
+
+  @@index([ownerId, status])
+}
+
+model TripMember {
+  id     String @id @default(cuid())
+  tripId String
+  trip   Trip   @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  name   String
+  avatar String
+  role   String
+}
+
+// ── Day / Activity / Place ─────────────────────────────────────────────────
+model Day {
+  id               String  @id @default(cuid())
+  tripId           String
+  trip             Trip    @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  date             String
+  index            Int
+  title            String
+  note             String?
+  intensityOverride String?
+  activities       Activity[]
+  expenses         Expense[]
+
+  @@unique([tripId, date])
+  @@index([tripId, index])
+}
+
+model Place {
+  id              String  @id @default(cuid())
+  destinationId   String
+  name            String
+  category        String
+  x               Float
+  y               Float
+  lat             Float?
+  lng             Float?
+  address         String?
+  rating          Float?
+  avgCost         Int     @default(0)
+  durationMin     Int     @default(90)
+  open            String?
+  close           String?
+  tagsJson        String  @default("[]")
+  indoor          Boolean @default(false)
+  requiredBooking Boolean @default(false)
+  emoji           String
+  description     String?
+}
+
+model Activity {
+  id            String  @id @default(cuid())
+  tripId        String
+  dayId         String
+  day           Day     @relation(fields: [dayId], references: [id], onDelete: Cascade)
+  placeId       String?
+  title         String
+  startTime     String
+  endTime       String
+  type          String
+  note          String?
+  estimatedCost Int     @default(0)
+  transportMode String  @default("walk")
+  transportMin  Int     @default(0)
+  status        String  @default("planned")
+  pinned        Boolean @default(false)
+  order         Int     @default(0)
+  proposalId    String?
+
+  @@index([dayId, order])
+}
+
+// ── Expense / Booking / Checklist ─────────────────────────────────────────
+model Expense {
+  id         String  @id @default(cuid())
+  tripId     String
+  trip       Trip    @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  dayId      String?
+  day        Day?    @relation(fields: [dayId], references: [id], onDelete: SetNull)
+  activityId String?
+  title      String
+  category   String
+  amount     Int     @default(0)
+  status     String  @default("planned")
+  date       String?
+  payerId    String?
+  note       String?
+}
+
+model Booking {
+  id            String  @id @default(cuid())
+  tripId        String
+  trip          Trip    @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  type          String
+  title         String
+  provider      String?
+  bookingNumber String?
+  startTime     String?
+  endTime       String?
+  dayId         String?
+  placeId       String?
+  cost          Int     @default(0)
+  status        String  @default("pending")
+  note          String?
+}
+
+model Checklist {
+  id     String          @id @default(cuid())
+  tripId String
+  trip   Trip            @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  phase  String
+  title  String
+  items  ChecklistItem[]
+}
+
+model ChecklistItem {
+  id     String     @id @default(cuid())
+  listId String
+  list   Checklist  @relation(fields: [listId], references: [id], onDelete: Cascade)
+  title  String
+  done   Boolean    @default(false)
+  auto   Boolean    @default(false)
+
+  @@index([listId])
+}
+
+// ── FileAsset / Journal ─────────────────────────────────────────────────
+model FileAsset {
+  id         String  @id @default(cuid())
+  tripId     String
+  trip       Trip    @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  ownerId    String?
+  owner      User?   @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  name       String
+  type       String
+  sizeKb     Int     @default(0)
+  uploadedAt String
+  linkedType String?
+  linkedId   String?
+}
+
+model Journal {
+  id         String  @id @default(cuid())
+  tripId     String
+  trip       Trip    @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  dayId      String?
+  date       String
+  title      String
+  mood       String  @default("🙂")
+  note       String  @default("")
+  photosJson String  @default("[]")
+  placeNames String  @default("")
+}
