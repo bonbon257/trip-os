@@ -177,6 +177,8 @@ export interface StoreState {
   saveUserGuide: (g: GuideContent) => void;
   /** 从小红书等导入一条攻略内容（source=xhs） */
   importGuide: (input: Omit<GuideContent, 'id' | 'source' | 'createdAt'>) => ID;
+  /** 更新攻略内容（如手动上传封面 cover）；Omit 防止误改关键字段 */
+  updateGuide: (id: ID, patch: Partial<Omit<GuideContent, 'id' | 'source' | 'createdAt'>>) => void;
   /** 标记攻略「正在使用」 */
   setGuideActive: (id: ID, on: boolean) => void;
   /** 标记攻略「已完成」 */
@@ -802,6 +804,14 @@ export const useStore = create<StoreState>()(
         }));
         return id;
       },
+
+      updateGuide: (id, patch) =>
+        set((s) => ({
+          db: {
+            ...s.db,
+            guideContents: s.db.guideContents.map((c) => (c.id === id ? { ...c, ...patch } : c)),
+          },
+        })),
 
       setGuideActive: (id, on) =>
         set((s) => ({

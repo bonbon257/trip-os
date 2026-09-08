@@ -376,6 +376,14 @@ export function MapPage() {
                 )}
               </div>
             }
+            fallbackOnError={
+              <MockMap
+                points={mapPoints}
+                selectedId={selected ?? undefined}
+                onSelect={(pid) => setSelected(pid)}
+                className="h-[46vh] min-h-[300px]"
+              />
+            }
           />
 
           {points.length < 3 && (

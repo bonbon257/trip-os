@@ -727,6 +727,7 @@ export function DestinationDetailPage() {
                             mode="driving"
                             city={dest.name}
                             fallback={<RouteFallback dest={dest} stops={route.stops} />}
+                            fallbackOnError={<RouteFallback dest={dest} stops={route.stops} />}
                             className="h-full w-full"
                           />
                         ) : (

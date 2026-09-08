@@ -1,5 +1,7 @@
 import { useNavigate, useParams, Link } from 'react-router-dom';
+import { useState, useRef, type ChangeEvent } from 'react';
 import { useStore } from '@/services/store';
+import { fileToCompressedDataURL } from '@/utils/image';
 import { Card, Section, Tag, cx } from '@/components/ui';
 import { toast } from '@/components/ui';
 import { useGuideContent, guideDestinationNames, guidePlace } from './guidePool';
@@ -28,6 +30,9 @@ export function GuideContentPage() {
   const toggleSavePlace = useStore((s) => s.toggleSavePlace);
   const favPlaceIds = useStore((s) => s.db.favPlaceIds);
   const savedPlaces = useStore((s) => s.db.savedPlaces);
+  const updateGuide = useStore((s) => s.updateGuide);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [coverLoading, setCoverLoading] = useState(false);
 
   if (!guide) {
     return (
@@ -44,6 +49,26 @@ export function GuideContentPage() {
 
   const names = guideDestinationNames(guide.destinationIds);
   const firstDest = guide.destinationIds[0];
+
+  const onPickCover = async (e: ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    e.target.value = '';
+    if (!f) return;
+    if (f.size > 6 * 1024 * 1024) {
+      toast('图片请小于 6MB', 'warn');
+      return;
+    }
+    try {
+      setCoverLoading(true);
+      const url = await fileToCompressedDataURL(f);
+      updateGuide(guide.id, { cover: url });
+      toast('封面已更新', 'good');
+    } catch (err) {
+      toast(err instanceof Error ? err.message : '封面上传失败', 'warn');
+    } finally {
+      setCoverLoading(false);
+    }
+  };
 
   const onUseGuide = () => {
     if (guide.playbookRef) {
@@ -72,7 +97,20 @@ export function GuideContentPage() {
 
       {/* 封面 + 标题 */}
       <header className="sticky-note overflow-hidden p-0">
-        <div className="h-36 bg-gradient-to-br from-rose-300 to-amber-200" />
+        <div className="relative h-36 bg-gradient-to-br from-rose-300 to-amber-200">
+          {guide.cover && (
+            <img src={guide.cover} alt="" className="h-full w-full object-cover" />
+          )}
+          <button
+            type="button"
+            onClick={() => fileRef.current?.click()}
+            disabled={coverLoading}
+            className="absolute right-3 top-3 rounded-full border-[1.5px] border-white/70 bg-black/35 px-3 py-1.5 text-[12px] font-bold text-white backdrop-blur transition hover:bg-black/55 disabled:opacity-60"
+          >
+            {coverLoading ? '上传中…' : '🖼 换封面'}
+          </button>
+          <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={onPickCover} />
+        </div>
         <div className="space-y-3 p-5">
           <div className="flex flex-wrap items-center gap-2">
             <Tag tone="rose">{KIND_LABEL[guide.kind]}</Tag>
