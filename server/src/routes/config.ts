@@ -49,7 +49,7 @@ export default async function configRoutes(app: FastifyInstance) {
     const patch = Object.fromEntries(
       Object.entries(parsed.data).filter(([, v]) => v !== undefined),
     );
-    setRuntimeConfig(patch);
+    await setRuntimeConfig(patch);
 
     const cfg = effectiveConfig();
     return {

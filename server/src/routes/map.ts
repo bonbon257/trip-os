@@ -174,7 +174,9 @@ export default async function mapRoutes(app: FastifyInstance) {
   app.get('/ip', async (req, reply) => {
     const xff = req.headers['x-forwarded-for'];
     const realIp = (Array.isArray(xff) ? xff[0] : xff)?.split(',')[0]?.trim() ?? req.ip;
-    const headers = realIp ? { 'X-Forwarded-For': realIp } : {};
+    const headers: Record<string, string> = realIp
+      ? { 'X-Forwarded-For': realIp }
+      : {};
     const data = (await callAmap('/ip', {}, headers)) as {
       status: string;
       province?: string;

@@ -13,7 +13,7 @@ import { effectiveConfig } from '../config-store.js';
 
 function extractInitialState(html: string): Record<string, any> | null {
   const m = html.match(/window\.__INITIAL_STATE__\s*=\s*(\{[\s\S]*?\});/);
-  if (!m) return null;
+  if (!m || !m[1]) return null;
   try {
     return JSON.parse(m[1]);
   } catch {

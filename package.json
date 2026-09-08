@@ -8,6 +8,7 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
+    "postinstall": "prisma generate --schema prisma/schema.prisma",
     "smoke": "node scripts/smoke.mjs",
     "smoke:logic": "node scripts/run-logic-smoke.mjs",
     "smoke:phase0": "node scripts/run-ts-smoke.mjs phase0-smoke && node scripts/run-ts-smoke.mjs phase0-rehydrate",
@@ -18,12 +19,21 @@
     "smoke:parseintent": "node scripts/run-ts-smoke.mjs parseintent-smoke"
   },
   "dependencies": {
+    "@fastify/cookie": "^8.3.0",
+    "@fastify/cors": "^9.0.1",
+    "@fastify/jwt": "^8.0.1",
+    "@prisma/client": "^5.20.0",
+    "@vercel/kv": "^1.0.1",
+    "bcryptjs": "^2.4.3",
+    "fastify": "^4.28.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.26.2",
+    "zod": "^3.23.8",
     "zustand": "^4.5.5"
   },
   "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
     "@types/react": "^18.3.5",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.1",
@@ -31,6 +41,7 @@
     "esbuild": "^0.21.5",
     "jsdom": "^25.0.1",
     "postcss": "^8.4.47",
+    "prisma": "^5.20.0",
     "tailwindcss": "^3.4.13",
     "typescript": "^5.5.4",
     "vite": "^5.4.8"

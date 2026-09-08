@@ -5,8 +5,12 @@
  *   用户在设置页填 Key，希望「填完立刻生效」，而不是去改 server/.env 再重启。
  *   所以配置分三层：
  *     1) 启动时从 server/.env 读（默认基线）
- *     2) 运行时通过 POST /api/config 覆盖，会持久化到 server/.runtime-config.json
- *     3) 重启后自动读回 runtime-config.json，不需要重新填 key
+ *     2) 运行时通过 POST /api/config 覆盖，会持久化
+ *     3) 重启后自动读回，不需要重新填 key
+ *
+ * 存储后端（按可用性自动选择）：
+ *   · Vercel 环境：用 Vercel KV（@vercel/kv），多实例共享、serverless 友好
+ *   · 本地 / 其他：回退到 server/.runtime-config.json 文件
  *
  * 安全：
  *   · 读取接口只返回「是否已配置」和掩码，绝不返回完整 Key
@@ -15,6 +19,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { z } from 'zod';
+import { kv } from '@vercel/kv';
 
 export const ConfigSchema = z.object({
   aiApiKey: z.string().max(300).optional(),
@@ -30,10 +35,29 @@ export const ConfigSchema = z.object({
 
 export type RuntimeConfig = z.infer<typeof ConfigSchema>;
 
+const KV_KEY = 'trip-os:runtime-config';
 const RUNTIME_CONFIG_FILE = join(process.cwd(), 'server', '.runtime-config.json');
 
+/** Vercel 绑定 KV 后会注入这两个环境变量 */
+function kvEnabled(): boolean {
+  return !!process.env.KV_REST_API_URL && !!process.env.KV_REST_API_TOKEN;
+}
+
 /** 把运行时配置落盘，这样刷新页面 / 重启服务后不用重填 */
-function loadPersistedConfig(): RuntimeConfig {
+async function loadPersistedConfig(): Promise<RuntimeConfig> {
+  if (kvEnabled()) {
+    try {
+      const raw = await kv.get<string>(KV_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        const validated = ConfigSchema.safeParse(parsed);
+        if (validated.success) return validated.data;
+      }
+      return {};
+    } catch {
+      /* KV 读不到就空启动 */
+    }
+  }
   try {
     if (existsSync(RUNTIME_CONFIG_FILE)) {
       const raw = readFileSync(RUNTIME_CONFIG_FILE, 'utf8');
@@ -47,7 +71,15 @@ function loadPersistedConfig(): RuntimeConfig {
   return {};
 }
 
-function savePersistedConfig(cfg: RuntimeConfig): void {
+async function savePersistedConfig(cfg: RuntimeConfig): Promise<void> {
+  if (kvEnabled()) {
+    try {
+      await kv.set(KV_KEY, JSON.stringify(cfg));
+      return;
+    } catch {
+      /* KV 写失败再回退文件 */
+    }
+  }
   try {
     const dir = dirname(RUNTIME_CONFIG_FILE);
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
@@ -57,12 +89,12 @@ function savePersistedConfig(cfg: RuntimeConfig): void {
   }
 }
 
-/** 内存中的运行时覆盖层（启动时从持久化文件预加载） */
-const overrides: RuntimeConfig = { ...loadPersistedConfig() };
+/** 内存中的运行时覆盖层（启动时从持久化预加载）；KV / 文件为持久层 */
+const overrides: RuntimeConfig = { ...(await loadPersistedConfig()) };
 
-export function setRuntimeConfig(patch: RuntimeConfig): void {
+export async function setRuntimeConfig(patch: RuntimeConfig): Promise<void> {
   Object.assign(overrides, patch);
-  savePersistedConfig(overrides);
+  await savePersistedConfig(overrides);
 }
 
 export function getRuntimeConfig(): RuntimeConfig {
