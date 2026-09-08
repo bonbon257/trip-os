@@ -24,3 +24,7 @@ vite.config.ts.timestamp-*.mjs
 
 # 日志
 *.log
+
+# 本地 SQLite 开发库（运行时数据，不入库）
+server/prisma/prisma/*.db
+server/prisma/prisma/*.db-journal
