@@ -16,8 +16,8 @@
  */
 import type { FastifyInstance } from 'fastify';
 import bcrypt from 'bcryptjs';
-import { effectiveConfig } from '../config-store.js';
-import { requireAuth } from './_auth.js';
+import { effectiveConfig } from '../config-store';
+import { requireAuth } from './_auth';
 
 const ANON_KEY = 'anon@trip-os.local';
 

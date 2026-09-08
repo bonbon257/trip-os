@@ -9,7 +9,7 @@
  */
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { effectiveConfig } from '../config-store.js';
+import { effectiveConfig } from '../config-store';
 
 function extractInitialState(html: string): Record<string, any> | null {
   const m = html.match(/window\.__INITIAL_STATE__\s*=\s*(\{[\s\S]*?\});/);

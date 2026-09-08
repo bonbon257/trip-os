@@ -5,7 +5,7 @@
  * 前端代码（包括 LLM 调用）一行都不用改。
  */
 import type { FastifyInstance } from 'fastify';
-import { effectiveConfig } from '../config-store.js';
+import { effectiveConfig } from '../config-store';
 import { randomUUID } from 'node:crypto';
 
 export default async function aiRoutes(app: FastifyInstance) {

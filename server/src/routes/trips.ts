@@ -10,7 +10,7 @@
  *   ...
  */
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import { requireAuth } from './_auth.js';
+import { requireAuth } from './_auth';
 import { z } from 'zod';
 
 const NewTrip = z.object({

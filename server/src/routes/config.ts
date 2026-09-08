@@ -13,7 +13,7 @@ import {
   mask,
   providerLabelFromUrl,
   setRuntimeConfig,
-} from '../config-store.js';
+} from '../config-store';
 
 export default async function configRoutes(app: FastifyInstance) {
   /** 当前生效配置（脱敏） */

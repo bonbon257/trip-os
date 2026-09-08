@@ -8,7 +8,7 @@
  * 密码用 bcrypt。后续接微信小程序时加 /api/auth/wx-login 走 wx.login 换 JWT。
  */
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import { requireAuth } from './_auth.js';
+import { requireAuth } from './_auth';
 import { z } from 'zod';
 import bcrypt from 'bcryptjs';
 

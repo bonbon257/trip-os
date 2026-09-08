@@ -10,7 +10,7 @@
  */
 import type { IncomingMessage, ServerResponse } from 'http';
 import type { FastifyInstance } from 'fastify';
-import { createApp } from '../server/src/app.js';
+import { createApp } from '../server/src/app';
 
 declare const globalThis: {
   __tripOsApp?: FastifyInstance;

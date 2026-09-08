@@ -10,7 +10,7 @@
  */
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { effectiveConfig } from '../config-store.js';
+import { effectiveConfig } from '../config-store';
 
 const AMAP_BASE = 'https://restapi.amap.com/v3';
 

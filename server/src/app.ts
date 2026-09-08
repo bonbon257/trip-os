@@ -11,15 +11,15 @@ import cors from '@fastify/cors';
 import jwt from '@fastify/jwt';
 import cookie from '@fastify/cookie';
 import { PrismaClient } from '@prisma/client';
-import { env } from './env.js';
-import aiRoutes from './routes/ai.js';
-import mapRoutes from './routes/map.js';
-import authRoutes from './routes/auth.js';
-import tripRoutes from './routes/trips.js';
-import stateRoutes from './routes/state.js';
-import healthRoutes from './routes/health.js';
-import configRoutes from './routes/config.js';
-import xhsRoutes from './routes/xhs.js';
+import { env } from './env';
+import aiRoutes from './routes/ai';
+import mapRoutes from './routes/map';
+import authRoutes from './routes/auth';
+import tripRoutes from './routes/trips';
+import stateRoutes from './routes/state';
+import healthRoutes from './routes/health';
+import configRoutes from './routes/config';
+import xhsRoutes from './routes/xhs';
 
 export async function createApp() {
   const prisma = new PrismaClient();
