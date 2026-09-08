@@ -66,6 +66,29 @@ export function ApiKeyCard() {
     void load();
   }, [load]);
 
+  const parseConfigRes = async (
+    res: Response,
+  ): Promise<{ ok: boolean; message?: string; error?: string }> => {
+    const text = await res.text();
+    if (!text.trim()) {
+      return { ok: false, error: `服务返回空响应 (HTTP ${res.status})` };
+    }
+    try {
+      const data = JSON.parse(text) as { ok?: boolean; message?: string; error?: string };
+      if (data.ok === false) {
+        return { ok: false, error: data.error ?? `请求失败 (HTTP ${res.status})` };
+      }
+      return { ok: data.ok ?? res.ok, message: data.message, error: data.error };
+    } catch {
+      // 后端/代理返回了 HTML 或纯文本错误，把前几字拿给用户看
+      const preview = text.slice(0, 120).replace(/\s+/g, ' ').trim();
+      return {
+        ok: false,
+        error: `服务器返回非 JSON 响应 (HTTP ${res.status}): ${preview || '无内容'}`,
+      };
+    }
+  };
+
   const save = async () => {
     setSaving(true);
     try {
@@ -81,7 +104,7 @@ export function ApiKeyCard() {
           amapSecurityKey: amapSecurityKey || undefined,
         }),
       });
-      const data = (await res.json()) as { ok: boolean; error?: string };
+      const data = await parseConfigRes(res);
       if (!data.ok) throw new Error(data.error ?? '保存失败');
       toast('已保存并立即生效', 'good');
       setAiKey('');
@@ -104,7 +127,7 @@ export function ApiKeyCard() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ service }),
       });
-      const data = (await res.json()) as { ok: boolean; message?: string; error?: string };
+      const data = await parseConfigRes(res);
       if (data.ok) toast(data.message ?? '连接成功', 'good');
       else toast(data.error ?? '连接失败', 'warn');
     } catch (err) {
