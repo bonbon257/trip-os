@@ -74,6 +74,7 @@ function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => 
   const settings = useStore((s) => s.settings);
   const weekendPlans = useStore((s) => s.db.weekendPlans);
   const saved = useStore((s) => s.db.savedPlaces);
+  const [tripsExpanded, setTripsExpanded] = useState(true);
   const hasWeekend = (weekendPlans ?? []).some(
     (p) => p.weekendOf === upcomingSaturday() && p.placeIds.length > 0,
   );
@@ -89,7 +90,7 @@ function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => 
         collapsed ? 'w-[72px] items-center px-2' : 'w-[260px] px-4',
       )}
     >
-      <div className={cx('flex min-h-0 flex-1 flex-col gap-5', collapsed && 'w-full')}>
+      <div className={cx('flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto pr-1', collapsed && 'w-full')}>
         {/* 我的旅行空间 */}
         <div className="flex items-center justify-between">
           {!collapsed ? (
@@ -153,45 +154,74 @@ function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => 
             {!collapsed && '首页'}
           </NavLink>
 
-          <NavLink
-            to={tripId ? `/trips/${tripId}` : '/travel'}
-            className={({ isActive }) =>
-              cx(
-                'focus-ring flex items-center gap-2.5 rounded-xl px-3 py-2 text-[13.5px] font-semibold transition',
-                isActive && location.pathname.startsWith('/trips/')
-                  ? 'bg-ink text-white'
-                  : 'text-inkSoft hover:bg-paperDeep hover:text-ink',
-              )
-            }
-          >
-            <span className="w-4 text-center text-[13px]">✈</span>
-            {!collapsed && '我的旅行'}
-          </NavLink>
-
-          {!collapsed && trips.length > 0 && (
-            <div className="ml-4 space-y-0.5 border-l-[1.5px] border-ink/10 pl-2">
-              {trips.slice(0, 4).map((t) => (
+          {!collapsed && trips.length > 0 ? (
+            <div className="space-y-0.5">
+              <div className="flex items-center justify-between">
                 <NavLink
-                  key={t.id}
-                  to={`/trips/${t.id}`}
+                  to={tripId ? `/trips/${tripId}` : '/travel'}
                   className={({ isActive }) =>
                     cx(
-                      'focus-ring flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-[12.5px] transition',
-                      isActive ? 'bg-violet/15 text-ink' : 'text-inkSoft hover:bg-paperDeep hover:text-ink',
+                      'focus-ring flex flex-1 items-center gap-2.5 rounded-xl px-3 py-2 text-[13.5px] font-semibold transition',
+                      isActive && location.pathname.startsWith('/trips/')
+                        ? 'bg-ink text-white'
+                        : 'text-inkSoft hover:bg-paperDeep hover:text-ink',
                     )
                   }
                 >
-                  <span>{t.emoji}</span>
-                  <span className="truncate">{t.title}</span>
+                  <span className="w-4 text-center text-[13px]">✈</span>
+                  我的旅行
                 </NavLink>
-              ))}
-              <Link
-                to="/travel"
-                className="flex items-center gap-2 px-2.5 py-1.5 text-[12px] font-semibold text-inkSoft hover:text-ink"
-              >
-                全部旅行 →
-              </Link>
+                <button
+                  type="button"
+                  onClick={() => setTripsExpanded((v) => !v)}
+                  title={tripsExpanded ? '收起旅行列表' : '展开旅行列表'}
+                  className="focus-ring grid h-7 w-7 place-items-center rounded-lg text-[11px] text-inkSoft transition hover:bg-paperDeep hover:text-ink"
+                >
+                  {tripsExpanded ? '▼' : '▶'}
+                </button>
+              </div>
+
+              {tripsExpanded && (
+                <div className="ml-4 space-y-0.5 border-l-[1.5px] border-ink/10 pl-2">
+                  {trips.slice(0, 4).map((t) => (
+                    <NavLink
+                      key={t.id}
+                      to={`/trips/${t.id}`}
+                      className={({ isActive }) =>
+                        cx(
+                          'focus-ring flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-[12.5px] transition',
+                          isActive ? 'bg-violet/15 text-ink' : 'text-inkSoft hover:bg-paperDeep hover:text-ink',
+                        )
+                      }
+                    >
+                      <span>{t.emoji}</span>
+                      <span className="truncate">{t.title}</span>
+                    </NavLink>
+                  ))}
+                  <Link
+                    to="/travel"
+                    className="flex items-center gap-2 px-2.5 py-1.5 text-[12px] font-semibold text-inkSoft hover:text-ink"
+                  >
+                    全部旅行 →
+                  </Link>
+                </div>
+              )}
             </div>
+          ) : (
+            <NavLink
+              to={tripId ? `/trips/${tripId}` : '/travel'}
+              className={({ isActive }) =>
+                cx(
+                  'focus-ring flex items-center gap-2.5 rounded-xl px-3 py-2 text-[13.5px] font-semibold transition',
+                  isActive && location.pathname.startsWith('/trips/')
+                    ? 'bg-ink text-white'
+                    : 'text-inkSoft hover:bg-paperDeep hover:text-ink',
+                )
+              }
+            >
+              <span className="w-4 text-center text-[13px]">✈</span>
+              {!collapsed && '我的旅行'}
+            </NavLink>
           )}
 
           <NavLink
@@ -221,14 +251,6 @@ function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => 
             <span className="w-4 text-center text-[13px]">📚</span>
             {!collapsed && '攻略 · Guide'}
           </NavLink>
-
-          <Link
-            to="/guide/my?import=1"
-            className="focus-ring ml-1 flex items-center gap-2.5 rounded-xl border-[1.5px] border-ink/15 bg-paperDeep px-3 py-2 text-[13px] font-bold text-ink transition hover:-translate-y-[1px] hover:border-ink/30 hover:shadow-note"
-          >
-            <span className="w-4 text-center text-[13px]">＋</span>
-            {!collapsed && '导入攻略'}
-          </Link>
 
           <NavLink
             to="/journey"
