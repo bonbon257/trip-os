@@ -4,6 +4,7 @@ import { useStore } from '@/services/store';
 import { getDestination } from '@/data/destinations';
 import { fullDestinationPool, transportEstimate } from '@/services/recommendation';
 import { CityPicker } from '@/features/destination/CityPicker';
+import { OriginPicker } from '@/features/destination/OriginPicker';
 import { IdealDaysHint } from '@/features/destination/IdealDaysHint';
 import { destinationsInText } from '@/utils/queryIntent';
 import { PageHeader } from '@/components/layout';
@@ -258,14 +259,13 @@ export function CreateTripPage() {
         </Field>
 
         <Field label="出发地" hint="大老远过去的话，建议天数会自动加缓冲">
-          <Input
+          <OriginPicker
             value={origin}
-            onChange={(e) => {
-              const v = e.target.value || '上海';
-              setOrigin(v);
-              setQuiz({ answers: { ...(quiz.answers ?? {}), origin: v } });
+            onChange={(v) => {
+              const next = v || '上海';
+              setOrigin(next);
+              setQuiz({ answers: { ...(quiz.answers ?? {}), origin: next } });
             }}
-            placeholder="比如：上海、北京、成都"
           />
         </Field>
 
