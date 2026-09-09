@@ -20,8 +20,15 @@ import stateRoutes from './routes/state';
 import healthRoutes from './routes/health';
 import configRoutes from './routes/config';
 import xhsRoutes from './routes/xhs';
+import { ensureConfigLoaded } from './config-store';
 
 export async function createApp() {
+  // 先加载运行时配置（KV/文件），避免路由处理时读到空覆盖；失败也不崩溃
+  await ensureConfigLoaded().catch((err) => {
+    // eslint-disable-next-line no-console
+    console.error('[createApp] 运行时配置加载失败，继续使用环境变量默认值:', err);
+  });
+
   const prisma = new PrismaClient();
 
   const app = Fastify({

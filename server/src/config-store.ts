@@ -89,10 +89,32 @@ async function savePersistedConfig(cfg: RuntimeConfig): Promise<void> {
   }
 }
 
-/** 内存中的运行时覆盖层（启动时从持久化预加载）；KV / 文件为持久层 */
-const overrides: RuntimeConfig = { ...(await loadPersistedConfig()) };
+/** 内存中的运行时覆盖层；懒加载，避免模块顶层 await 导致 Vercel 冷启动崩溃 */
+let overrides: RuntimeConfig = {};
+let configLoadPromise: Promise<void> | null = null;
+let configLoaded = false;
+
+/** 启动时从 KV/文件预加载一次；重复调用幂等 */
+export async function ensureConfigLoaded(): Promise<void> {
+  if (configLoaded) return;
+  if (configLoadPromise) return configLoadPromise;
+  configLoadPromise = (async () => {
+    try {
+      const cfg = await loadPersistedConfig();
+      overrides = { ...cfg };
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('[config-store] 加载持久化配置失败，使用空覆盖:', err);
+      overrides = {};
+    } finally {
+      configLoaded = true;
+    }
+  })();
+  return configLoadPromise;
+}
 
 export async function setRuntimeConfig(patch: RuntimeConfig): Promise<void> {
+  await ensureConfigLoaded();
   Object.assign(overrides, patch);
   await savePersistedConfig(overrides);
 }

@@ -21,10 +21,16 @@ async function getApp(): Promise<FastifyInstance> {
   if (globalThis.__tripOsApp) return globalThis.__tripOsApp;
   if (!globalThis.__tripOsAppReady) {
     globalThis.__tripOsAppReady = (async () => {
-      const app = await createApp();
-      await app.ready();
-      globalThis.__tripOsApp = app;
-      return app;
+      try {
+        const app = await createApp();
+        await app.ready();
+        globalThis.__tripOsApp = app;
+        return app;
+      } catch (err) {
+        // 初始化失败时清空缓存，避免同一实例永远复用失败的 Promise
+        globalThis.__tripOsAppReady = undefined;
+        throw err;
+      }
     })();
   }
   return globalThis.__tripOsAppReady;
