@@ -81,10 +81,28 @@ Vercel 自动：
 
 ---
 
-## 排错
+## 验证与排错
+
+### 先访问独立健康检查
+
+部署后先在浏览器打开：
+
+```
+https://<你的域名>/api/health
+```
+
+- 返回 JSON → Vercel 函数基础设施正常，继续排查 catch-all 里的依赖。
+- 仍报 `FUNCTION_INVOCATION_FAILED` → 函数还没部署到新版本，或 Vercel 运行时/构建产物本身有问题，看 Function Logs。
+
+### 环境变量 Key 名必须完全一致
+
+常见错误：填了 `LLM_API_KEY` 但代码读的是 `AI_API_KEY`；填了 `VITE_NEON_AUTH_URL` 但代码读的是 `DATABASE_URL`。Key 名必须和下面「配置环境变量」表格里的**完全一致**。
+
+### 排错表
 
 | 现象 | 原因 / 解决 |
 |---|---|
+| 设置页「测试模型连接」报 `FUNCTION_INVOCATION_FAILED` | 先看 `/api/health`；若 health 通，再看 Function Logs 里的真实错误（现在会 JSON 化返回给浏览器） |
 | 函数日志报 `Prisma Client not generated` | `postinstall` 没跑；确认根 `package.json` 的 `postinstall` 是 `prisma generate --schema prisma/schema.prisma` |
 | `/api/*` 返回 404 | 确认 `api/[...path].ts` 在**仓库根** `api/` 目录（不是 `server/api`） |
 | 设置页保存的 Key 不持久 / 测试时有时无 | 确认 KV 已绑定（环境变量里应有 `KV_REST_API_URL`） |
