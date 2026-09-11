@@ -1,22 +1,26 @@
 /**
  * Vercel catch-all 函数：把 /api/* 请求转发给 Fastify 应用
  * ────────────────────────────────────────────────────────────
- * 关键点：不在顶层 import '../server/src/app'，而是 handler 内部动态 import。
- * 这样 Prisma / KV / Fastify 插件等重型依赖就算在初始化阶段抛错，也会被
- * handler 的 try/catch 兜住并返回 JSON，而不是让模块加载直接崩溃，
- * 导致 Vercel 返回模糊的 FUNCTION_INVOCATION_FAILED。
+ * Vercel 不能跑常驻服务，所以这里用 serverless 函数「按需」装配 Fastify：
+ *   · 冷启动：createApp() 装配路由 + await app.ready()（只一次，缓存复用）
+ *   · 每个请求：app.server.emit('request', req, res) 交给 Fastify 处理
+ *
+ * 这样 server/src 下所有路由逻辑（auth / state / trips / ai / map / xhs / config）
+ * 一行都不用改，全部在 Vercel 上跑。
+ *
+ * 注意：这里用静态 import，让 Vercel 的打包器在构建时就把 server/src/app.ts
+ * 及其依赖全部打包进函数。之前用动态 import 导致 Vercel 运行期找不到模块。
  */
 import type { IncomingMessage, ServerResponse } from 'http';
 import type { FastifyInstance } from 'fastify';
-
-type CreateApp = () => Promise<FastifyInstance>;
+import { createApp } from '../server/src/app';
 
 declare const globalThis: {
   __tripOsApp?: FastifyInstance;
   __tripOsAppReady?: Promise<FastifyInstance>;
 } & typeof globalThis;
 
-async function getApp(createApp: CreateApp): Promise<FastifyInstance> {
+async function getApp(): Promise<FastifyInstance> {
   if (globalThis.__tripOsApp) return globalThis.__tripOsApp;
   if (!globalThis.__tripOsAppReady) {
     globalThis.__tripOsAppReady = (async () => {
@@ -37,9 +41,7 @@ async function getApp(createApp: CreateApp): Promise<FastifyInstance> {
 
 export default async function handler(req: IncomingMessage, res: ServerResponse) {
   try {
-    // 动态导入：把模块级错误变成 handler 级错误，可被捕获并返回 JSON
-    const { createApp } = await import('../server/src/app');
-    const app = await getApp(createApp);
+    const app = await getApp();
     // 交给 Fastify 接管请求/响应生命周期（它会读 body、写 res）
     app.server.emit('request', req, res);
   } catch (err) {
