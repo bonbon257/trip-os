@@ -6,14 +6,12 @@
  *   · 冷启动：createApp() 装配路由 + await app.ready()（只一次，缓存复用）
  *   · 每个请求：app.server.emit('request', req, res) 交给 Fastify 处理
  *
- * 为什么用动态 import('./_app') 而不是静态 import？
- *   静态 import 失败时（模块加载阶段），handler 的 try/catch 根本来不及执行，
- *   Vercel 网关会直接返回 FUNCTION_INVOCATION_FAILED 模糊错误页。
- *   动态 import 把错误推迟到 handler 运行时，从而能被 catch 住并返回 JSON。
- *   _app.ts 与 [...path].ts 同目录，Vercel 打包器会把它一起打进函数包。
+ * 静态 import 让 Vercel 构建器把 server/src/app.ts 及其依赖全部 inline 进函数包。
+ * 若初始化失败，由 Fastify 的 setErrorHandler / handler 内 try/catch 兜底。
  */
 import type { IncomingMessage, ServerResponse } from 'http';
 import type { FastifyInstance } from 'fastify';
+import { createApp } from '../server/src/app';
 
 type TripOsGlobal = {
   __tripOsApp?: FastifyInstance;
@@ -27,8 +25,6 @@ async function getApp(): Promise<FastifyInstance> {
   if (!tripOsGlobal.__tripOsAppReady) {
     tripOsGlobal.__tripOsAppReady = (async () => {
       try {
-        // 延迟加载：让模块级错误落入 handler 的 catch
-        const { createApp } = await import('./_app');
         const app = await createApp();
         await app.ready();
         tripOsGlobal.__tripOsApp = app;
