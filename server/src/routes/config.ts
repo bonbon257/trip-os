@@ -1,3 +1,4 @@
+/// <reference types="node" />
 /**
  * 配置管理路由
  * ────────────────────────────────────────────────────────────
@@ -11,7 +12,6 @@ import {
   effectiveConfig,
   getRuntimeConfig,
   mask,
-  providerLabelFromUrl,
   setRuntimeConfig,
 } from '../config-store';
 

@@ -1,3 +1,4 @@
+/// <reference types="node" />
 /**
  * Trips 路由（受 JWT 保护）
  * ────────────────────────────────────────────────────────────
@@ -103,7 +104,7 @@ export default async function tripsRoutes(app: FastifyInstance) {
   app.delete<{ Params: { id: string } }>(
     '/:id',
     { preHandler: [requireAuth] },
-    async (req, reply) => {
+    async (req, _reply) => {
       await app.prisma.trip.deleteMany({ where: { id: req.params.id, ownerId: req.user.id } });
       return { ok: true };
     },

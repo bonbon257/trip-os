@@ -1,3 +1,4 @@
+/// <reference types="node" />
 /** 环境变量集中管理，缺 key 时给出明确提示而不是静默失败 */
 function need(name: string): string {
   const v = process.env[name];

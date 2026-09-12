@@ -1,3 +1,4 @@
+/// <reference types="node" />
 /**
  * Vercel catch-all 函数：把 /api/* 请求转发给 Fastify 应用
  * ────────────────────────────────────────────────────────────
@@ -15,28 +16,30 @@ import type { IncomingMessage, ServerResponse } from 'http';
 import type { FastifyInstance } from 'fastify';
 import { createApp } from '../server/src/app';
 
-declare const globalThis: {
+type TripOsGlobal = {
   __tripOsApp?: FastifyInstance;
   __tripOsAppReady?: Promise<FastifyInstance>;
-} & typeof globalThis;
+};
+
+const tripOsGlobal = globalThis as unknown as TripOsGlobal;
 
 async function getApp(): Promise<FastifyInstance> {
-  if (globalThis.__tripOsApp) return globalThis.__tripOsApp;
-  if (!globalThis.__tripOsAppReady) {
-    globalThis.__tripOsAppReady = (async () => {
+  if (tripOsGlobal.__tripOsApp) return tripOsGlobal.__tripOsApp;
+  if (!tripOsGlobal.__tripOsAppReady) {
+    tripOsGlobal.__tripOsAppReady = (async () => {
       try {
         const app = await createApp();
         await app.ready();
-        globalThis.__tripOsApp = app;
+        tripOsGlobal.__tripOsApp = app;
         return app;
       } catch (err) {
         // 初始化失败时清空缓存，避免同一实例永远复用失败的 Promise
-        globalThis.__tripOsAppReady = undefined;
+        tripOsGlobal.__tripOsAppReady = undefined;
         throw err;
       }
     })();
   }
-  return globalThis.__tripOsAppReady;
+  return tripOsGlobal.__tripOsAppReady;
 }
 
 export default async function handler(req: IncomingMessage, res: ServerResponse) {

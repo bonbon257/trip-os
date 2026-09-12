@@ -1,3 +1,4 @@
+/// <reference types="node" />
 // Trip OS 后端类型扩展
 import type { PrismaClient } from '@prisma/client';
 

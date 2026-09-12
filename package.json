@@ -10,7 +10,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc -b && tsc --noEmit -p tsconfig.server.json",
     "postinstall": "prisma generate --schema prisma/schema.prisma",
     "smoke": "node scripts/smoke.mjs",
     "smoke:logic": "node scripts/run-logic-smoke.mjs",

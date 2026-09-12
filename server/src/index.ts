@@ -1,3 +1,4 @@
+/// <reference types="node" />
 /**
  * 本地开发入口：装配 Fastify 并监听端口。
  * Vercel 不会执行本文件（函数入口是仓库根 api/[...path].ts）。

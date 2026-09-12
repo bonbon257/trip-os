@@ -1,3 +1,4 @@
+/// <reference types="node" />
 import type { FastifyInstance } from 'fastify';
 
 /** 健康检查 + 服务基本信息：用于部署后探活 + 排错 */

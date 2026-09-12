@@ -1,3 +1,4 @@
+/// <reference types="node" />
 /**
  * 用户与状态同步路由
  * ────────────────────────────────────────────────────────────
@@ -23,7 +24,7 @@ const ANON_KEY = 'anon@trip-os.local';
 
 export default async function stateRoutes(app: FastifyInstance) {
   // 创建一个匿名开发用户, 自动返回 token
-  app.post('/auth/anon', async (req, reply) => {
+  app.post('/auth/anon', async (_req, reply) => {
     const cfg = effectiveConfig();
     const existing = await app.prisma.user.findUnique({ where: { email: ANON_KEY } });
     const user =
@@ -58,7 +59,7 @@ export default async function stateRoutes(app: FastifyInstance) {
   });
 
   // 拉取当前用户的状态
-  app.get('/state', { preHandler: [requireAuth] }, async (req: any, reply) => {
+  app.get('/state', { preHandler: [requireAuth] }, async (req: any, _reply) => {
     const row = await app.prisma.userState.findUnique({ where: { userId: req.user.id } });
     if (!row) {
       return { ok: true, exists: false, json: null };
