@@ -6,15 +6,14 @@
  *   · 冷启动：createApp() 装配路由 + await app.ready()（只一次，缓存复用）
  *   · 每个请求：app.server.emit('request', req, res) 交给 Fastify 处理
  *
- * 这样 server/src 下所有路由逻辑（auth / state / trips / ai / map / xhs / config）
- * 一行都不用改，全部在 Vercel 上跑。
- *
- * 注意：这里用静态 import，让 Vercel 的打包器在构建时就把 server/src/app.ts
- * 及其依赖全部打包进函数。之前用动态 import 导致 Vercel 运行期找不到模块。
+ * 为什么用动态 import('./_app') 而不是静态 import？
+ *   静态 import 失败时（模块加载阶段），handler 的 try/catch 根本来不及执行，
+ *   Vercel 网关会直接返回 FUNCTION_INVOCATION_FAILED 模糊错误页。
+ *   动态 import 把错误推迟到 handler 运行时，从而能被 catch 住并返回 JSON。
+ *   _app.ts 与 [...path].ts 同目录，Vercel 打包器会把它一起打进函数包。
  */
 import type { IncomingMessage, ServerResponse } from 'http';
 import type { FastifyInstance } from 'fastify';
-import { createApp } from '../server/src/app';
 
 type TripOsGlobal = {
   __tripOsApp?: FastifyInstance;
@@ -28,6 +27,8 @@ async function getApp(): Promise<FastifyInstance> {
   if (!tripOsGlobal.__tripOsAppReady) {
     tripOsGlobal.__tripOsAppReady = (async () => {
       try {
+        // 延迟加载：让模块级错误落入 handler 的 catch
+        const { createApp } = await import('./_app');
         const app = await createApp();
         await app.ready();
         tripOsGlobal.__tripOsApp = app;
@@ -42,6 +43,13 @@ async function getApp(): Promise<FastifyInstance> {
   return tripOsGlobal.__tripOsAppReady;
 }
 
+function sendError(res: ServerResponse, status: number, message: string) {
+  if (res.headersSent) return;
+  res.statusCode = status;
+  res.setHeader('Content-Type', 'application/json');
+  res.end(JSON.stringify({ ok: false, error: message }));
+}
+
 export default async function handler(req: IncomingMessage, res: ServerResponse) {
   try {
     const app = await getApp();
@@ -51,10 +59,6 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     const message = err instanceof Error ? err.message : String(err);
     // eslint-disable-next-line no-console
     console.error('[trip-os] handler error:', err);
-    if (!res.headersSent) {
-      res.statusCode = 500;
-      res.setHeader('Content-Type', 'application/json');
-      res.end(JSON.stringify({ ok: false, error: `Function init failed: ${message}` }));
-    }
+    sendError(res, 500, `Function init failed: ${message}`);
   }
 }
