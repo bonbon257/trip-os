@@ -4,11 +4,11 @@
   "version": "0.1.0",
   "type": "module",
   "engines": {
-    "node": ">=18"
+    "node": "22.x"
   },
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "prisma generate --schema prisma/schema.prisma && tsc -b && vite build",
     "preview": "vite preview",
     "typecheck": "tsc -b && tsc --noEmit -p tsconfig.server.json",
     "postinstall": "prisma generate --schema prisma/schema.prisma",
@@ -27,6 +27,7 @@
     "@fastify/jwt": "^8.0.1",
     "@prisma/client": "^5.20.0",
     "@vercel/kv": "^1.0.1",
+    "prisma": "^5.20.0",
     "bcryptjs": "^2.4.3",
     "fastify": "^4.28.1",
     "react": "^18.3.1",
@@ -45,7 +46,6 @@
     "esbuild": "^0.21.5",
     "jsdom": "^25.0.1",
     "postcss": "^8.4.47",
-    "prisma": "^5.20.0",
     "tailwindcss": "^3.4.13",
     "typescript": "^5.5.4",
     "vite": "^5.4.8"
