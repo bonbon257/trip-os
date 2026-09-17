@@ -7,7 +7,7 @@
     }
   ],
   "functions": {
-    "api/**/*.mjs": {
+    "api/**/*": {
       "maxDuration": 30,
       "includeFiles": "node_modules/.prisma/**"
     }
