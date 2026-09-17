@@ -30,6 +30,9 @@ type TripOsGlobal = {
 
 const tripOsGlobal = globalThis as unknown as TripOsGlobal;
 
+/** 版本探针：改一次桥接逻辑就更新一次，用于确认线上跑的是哪个版本 */
+const APP_STAMP = 'catch-all-inject-2026-09-17a';
+
 async function getApp(): Promise<FastifyInstance> {
   if (tripOsGlobal.__tripOsApp) return tripOsGlobal.__tripOsApp;
   if (!tripOsGlobal.__tripOsAppReady) {
@@ -49,14 +52,15 @@ async function getApp(): Promise<FastifyInstance> {
   return tripOsGlobal.__tripOsAppReady;
 }
 
-function sendError(res: ServerResponse, status: number, message: string) {
-  if (res.headersSent) return;
-  res.statusCode = status;
-  res.setHeader('Content-Type', 'application/json');
-  res.end(JSON.stringify({ ok: false, error: message }));
-}
-
 export default async function handler(req: IncomingMessage, res: ServerResponse) {
+  // 版本探针：不经过 Fastify/app 链。若它可用而业务接口不可用，
+  // 说明问题在 app 初始化；若它也 500，说明模块求值就崩了或部署未更新。
+  if ((req.url ?? '').split('?')[0] === '/api/__v') {
+    res.statusCode = 200;
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify({ ok: true, stamp: APP_STAMP, node: process.version, time: Date.now() }));
+    return;
+  }
   try {
     const app = await getApp();
 
@@ -91,8 +95,13 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     res.end(reply.rawPayload);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
+    const stack = err instanceof Error ? err.stack : undefined;
     // eslint-disable-next-line no-console
     console.error('[trip-os] handler error:', err);
-    sendError(res, 500, `Function init failed: ${message}`);
+    if (!res.headersSent) {
+      res.statusCode = 500;
+      res.setHeader('Content-Type', 'application/json');
+    }
+    res.end(JSON.stringify({ ok: false, stamp: APP_STAMP, error: message, stack }));
   }
 }

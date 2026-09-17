@@ -11,7 +11,9 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import jwt from '@fastify/jwt';
 import cookie from '@fastify/cookie';
-import { PrismaClient } from '@prisma/client';
+// 只做类型引用，运行时惰性加载——避免 @prisma/client 在模块求值阶段抛错
+// 导致整个 Vercel 函数变成不可诊断的 FUNCTION_INVOCATION_FAILED
+import type { PrismaClient } from '@prisma/client';
 import { env } from './env';
 import aiRoutes from './routes/ai';
 import mapRoutes from './routes/map';
@@ -30,7 +32,17 @@ export async function createApp() {
     console.error('[createApp] 运行时配置加载失败，继续使用环境变量默认值:', err);
   });
 
-  const prisma = new PrismaClient();
+  // 运行时惰性加载 Prisma Client；任何加载错误都会被上层 try/catch 捕获
+  // 并转成可见 JSON，而不是 Vercel 的 FUNCTION_INVOCATION_FAILED
+  const prismaMod = (await import('@prisma/client')) as unknown as {
+    PrismaClient?: new () => PrismaClient;
+    default?: { PrismaClient: new () => PrismaClient };
+  };
+  const PrismaClientCtor = prismaMod.PrismaClient ?? prismaMod.default?.PrismaClient;
+  if (!PrismaClientCtor) {
+    throw new Error('@prisma/client 未正确生成：请确认部署阶段已执行 prisma generate');
+  }
+  const prisma = new PrismaClientCtor();
 
   const app = Fastify({
     logger: { level: env.nodeEnv === 'production' ? 'info' : 'debug' },
