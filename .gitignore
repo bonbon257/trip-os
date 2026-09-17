@@ -28,3 +28,6 @@ vite.config.ts.timestamp-*.mjs
 # 本地 SQLite 开发库（运行时数据，不入库）
 server/prisma/prisma/*.db
 server/prisma/prisma/*.db-journal
+
+# API 函数：由 esbuild 预打包生成（scripts/bundle-api.mjs），运行期产物不入库
+api/*.mjs
