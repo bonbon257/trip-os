@@ -2,21 +2,18 @@
 /**
  * Vercel catch-all 函数：把 /api/* 请求转发给 Fastify 应用
  * ────────────────────────────────────────────────────────────
- * Vercel 不能跑常驻服务，所以这里用 serverless 函数「按需」装配 Fastify：
- *   · 冷启动：createApp() 装配路由 + await app.ready()（只一次，缓存复用）
- *   · 每个请求：app.server.emit('request', req, res) 交给 Fastify 处理
+ * 不再用 app.server.emit('request', ...) 直连 socket（Vercel 的 req/res
+ * 与 Node 原生实现有差异，导致 FUNCTION_INVOCATION_FAILED）。
  *
- * 重要：Vercel 会把未捕获的异常/未处理 rejection 直接变成 opaque 的
- * FUNCTION_INVOCATION_FAILED，看不到具体原因。这里加了两层兜底：
- *   1) 捕获 getApp() 初始化异常 → 返回可见 JSON（而不是 500 空白）
- *   2) 监听 res 的 finish/error + 进程级 unhandledRejection/uncaughtException
- *      → 把真实堆栈打到 Function Logs，方便定位
+ * 改用 Fastify 官方的 app.inject()（light-my-request）：纯内存构造请求、
+ * 完整走一遍 Fastify 生命周期，返回结构化响应，不碰任何 socket/流桥接。
+ * 这是 Fastify 在 serverless 环境的推荐用法。
  */
 import type { IncomingMessage, ServerResponse } from 'http';
 import type { FastifyInstance } from 'fastify';
 import { createApp } from '../server/src/app';
 
-// 进程级兜底：把异步链路里 Fastify 没接住的异常打到日志（Vercel Function Logs 可见）
+// 进程级兜底：把异步链路里漏掉的异常打到日志（Vercel Function Logs 可见）
 process.on('unhandledRejection', (reason) => {
   // eslint-disable-next-line no-console
   console.error('[trip-os] unhandledRejection:', reason);
@@ -62,15 +59,36 @@ function sendError(res: ServerResponse, status: number, message: string) {
 export default async function handler(req: IncomingMessage, res: ServerResponse) {
   try {
     const app = await getApp();
-    // 交给 Fastify 接管请求/响应生命周期（它会读 body、写 res）
-    app.server.emit('request', req, res);
 
-    // 等待本次响应结束，捕获 Fastify 异步链里漏掉的异常
-    await new Promise<void>((resolve) => {
-      res.once('close', resolve);
-      res.once('finish', resolve);
-      res.once('error', resolve);
+    // 1) 读完请求体（Vercel 传入的是流）
+    const chunks: Buffer[] = [];
+    for await (const chunk of req) {
+      chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : (chunk as Buffer));
+    }
+    const payload = chunks.length ? Buffer.concat(chunks) : undefined;
+
+    // 2) 复制请求头
+    const headers: Record<string, string | string[]> = {};
+    for (const [key, value] of Object.entries(req.headers)) {
+      if (value === undefined) continue;
+      headers[key] = value;
+    }
+
+    // 3) 内存级注入给 Fastify（含查询串，req.url 自带 ?a=b）
+    const reply = await app.inject({
+      method: (req.method ?? 'GET') as 'DELETE' | 'HEAD' | 'GET' | 'OPTIONS' | 'PATCH' | 'POST' | 'PUT',
+      url: req.url ?? '/',
+      headers,
+      payload,
     });
+
+    // 4) 把 Fastify 响应写回 Vercel 的 res
+    res.statusCode = reply.statusCode;
+    for (const [key, value] of Object.entries(reply.headers)) {
+      if (value === undefined) continue;
+      res.setHeader(key, value);
+    }
+    res.end(reply.rawPayload);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     // eslint-disable-next-line no-console
