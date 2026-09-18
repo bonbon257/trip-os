@@ -1,118 +1,85 @@
-# Vercel 部署指南（完整版：后端也上 Vercel）
+# Trip OS 部署到 Vercel（免费 Hobby 档）
 
-把前端 + 后端一次性部署到 Vercel，不再需要单独的 Railway/Render 后端服务。
+> 状态：代码已修好并推到 `main`（commit `f2c7669`）。Vercel 免费档可用。
 
-## 架构
+## 为什么这次能跑通（根因已修复）
 
-- **前端**：根 `dist/`（Vite 构建的静态站）
-- **后端**：`api/[...path].ts` 是一个 Vercel 函数，内部包裹 Fastify，处理所有 `/api/*`
-  - 冷启动装配一次（`createApp()`），之后复用（缓存到 `globalThis`）
-  - 所有原有路由逻辑（auth / state / trips / ai / map / xhs / config）一行未改
-- **数据库**：Neon（serverless Postgres），Prisma 连接
-- **运行时 Key 存储**：Vercel KV（用户在设置页填的 Key 落这里，serverless 多实例共享）
+之前 `FUNCTION_INVOCATION_FAILED` 的唯一原因是：**Vercel 的打包器（@vercel/nft）不会把 `api/` 目录之外的本地 `server/src/*.ts` 打进函数包**，运行期 `require` 找不到文件就崩。
 
-## 你需要准备的外部资源（2 个）
+修复做法：
+- `api/` 下的函数入口改为 **esbuild 预先打包的自包含 `.mjs`**（`scripts/bundle-api.mjs` 从 `api-src/*.ts` 打包，本地代码内联、只有 `node_modules` 留外部），并已**入库**（Vercel 在 build 之前就校验 `functions` glob，那时 `.mjs` 必须已存在）。
+- `vercel.json` 的 `functions` glob 指向 `api/**/*.mjs`，并 `includeFiles` 覆盖 Prisma 引擎（`node_modules/.prisma/**`、`node_modules/@prisma/**`）。
+- `package.json` 的 `postinstall` 跑 `prisma generate`，保证无论 Vercel 用哪个 build 命令，Prisma Client 都会生成。
 
-1. **Neon 数据库**（免费层即可）：https://neon.tech
-2. **Vercel KV**：在 Vercel 项目里一键创建
+数据层是 **Postgres**（`prisma/schema.prisma` 的 `provider = "postgresql"`），接外部数据库即可持久化，不存在 Vercel 只读文件系统写不了 SQLite 的问题。
 
----
+## 第一步：在 Vercel 导入仓库
 
-## 步骤
+1. Vercel Dashboard → **Add New → Project** → 选 GitHub 仓库 `bonbon257/trip-os`。
+2. 框架预设会自动识别为 **Vite**，但请手动确认/填入以下两项（关键）：
 
-### 1. 建 Neon 数据库
-
-1. 打开 https://neon.tech → 用 GitHub 登录 → New Project → Postgres 16
-2. 建好后，在 Dashboard 复制 **Connection string**，选 **Pooled**（端口 `6543`）：
-   ```
-   postgresql://user:pass@ep-xxxx-pooler.region.aws.neon.tech/neondb?sslmode=require
-   ```
-3. 把表结构推上去（本地执行，用 Neon 的 URL）：
-   ```bash
-   DATABASE_URL="<上面那串>" npx prisma db push --schema prisma/schema.prisma
-   ```
-   看到 `Your database is now in sync` 即成功。
-
-### 2. 建 Vercel KV
-
-1. Vercel 项目 → **Storage** → **Create** → **KV**
-2. 创建后点 **Connect** 绑到你的项目
-3. 绑定后 Vercel 会自动注入 `KV_REST_API_URL` / `KV_REST_API_TOKEN`，无需手填
-
-### 3. 配置环境变量
-
-Vercel 项目 → **Settings → Environment Variables**，添加：
-
-| 变量 | 值 | 说明 |
+| 设置项 | 值 | 说明 |
 |---|---|---|
-| `DATABASE_URL` | Neon 的 pooled URL | 第 1 步复制的那串 |
-| `AI_API_KEY` | 你的 LLM Key | 如 DeepSeek `sk-...` |
-| `AI_BASE_URL` | `https://api.deepseek.com` | 或通义/智谱/Kimi 等 |
-| `AI_MODEL` | `deepseek-chat` | 对应模型名 |
-| `AMAP_WEB_KEY` | 高德 Web 服务 Key | 地图用，可选 |
-| `AMAP_JS_KEY` | 高德 JS API Key | 地图用，可选 |
-| `AMAP_SECURITY_KEY` | 高德安全密钥 | 可选 |
-| `JWT_SECRET` | `openssl rand -base64 32` | 用户系统签名，必填 |
+| **Build Command** | `npm run build` | 必须显式设。默认 Vite 预设会用 `vite build`，跳过 `prisma generate`/打包；本项覆盖它。（即便不覆盖，`postinstall` 也会兜底 `prisma generate`，但设为 `npm run build` 最完整） |
+| **Output Directory** | `dist` | 前端静态资源输出目录 |
+| **Install Command** | `npm install` | 默认即可（会触发 postinstall 跑 prisma generate） |
+| **Node.js Version** | `22.x` | 项目 `engines.node` 已锁，建议一致 |
 
-> KV 的两个变量（KV_REST_API_URL / KV_REST_API_TOKEN）由绑定 KV 自动注入，不要手动加。
+3. 点 **Deploy**（先不急填环境变量也能部署，但接口会 500，见下一步）。
 
-### 4. 部署
+## 第二步：配置环境变量
+
+Vercel Dashboard → 项目 → **Settings → Environment Variables**，逐个添加（Production 勾选）：
+
+| 变量名 | 必填 | 说明 / 取值 |
+|---|---|---|
+| `DATABASE_URL` | ✅ | 外部 Postgres 连接串。**推荐 Neon 免费库**：去 [neon.tech](https://neon.tech) 建库，复制 `postgresql://...` 连接串填这里（Pooled 或非 Pooled 均可）。**Vercel 不能写本地文件，必须走外部库** |
+| `AI_API_KEY` | ✅ | 模型服务 key（如 deepseek：`sk-...`） |
+| `AI_BASE_URL` | 可选 | 模型 API base，默认 `https://api.deepseek.com/v1`（看 `server/src/env.ts` 默认值） |
+| `AI_MODEL` | 可选 | 模型名，默认看 `env.ts` |
+| `JWT_SECRET` | ✅ | 任意长随机串，用于登录 token 签名。可点 "Generate" 或用 `openssl rand -hex 32` |
+| `NODE_ENV` | ✅ | 填 `production`（触发静态托管 + 正式配置） |
+| `AMAP_WEB_KEY` | 可选 | 高德地图 Web 端 key（地图功能需要） |
+| `CORS_ORIGINS` | 可选 | 跨域白名单，同源部署可留空 |
+
+> 填完变量后，回 **Deployments** 对最新部署点 **Redeploy**（勾 "Redeploy with existing Build Cache" 即可）。
+
+## 第三步：首次建表（prisma db push）
+
+Vercel 没有交互式 shell 直接改库，在**本地**连上 `DATABASE_URL` 建表（只需一次）：
 
 ```bash
-git add -A && git commit -m "feat: 后端改写为 Vercel 函数" && git push origin main
+# 本地终端，确保 .env 里有和 Vercel 相同的 DATABASE_URL
+cd trip-os
+npx prisma db push
 ```
 
-Vercel 自动：
-1. `npm install`（安装根依赖，含 fastify/prisma/@vercel/kv）
-2. `postinstall` → `prisma generate`（生成 client 到根 `node_modules`）
-3. 构建前端 `dist/`
-4. `api/[...path].ts` 作为函数就位
+（可选）之后若改 schema，用 `npx prisma db push` 同步即可（项目无 migrations 目录，用 push 模式）。
 
-部署完成后，`/api/*` 全部由 Vercel 函数处理，设置页「测试模型连接」等功能即可正常使用。
+## 第四步：验证
 
----
-
-## 本地开发
-
-- 前端：`npm install && npm run dev`
-- 后端（独立）：`cd server && npm install && npm run dev`（端口 8787，监听模式）
-- 本地后端如需数据库：把 `.env` 的 `DATABASE_URL` 也填成 Neon 的 URL（或本地 Docker Postgres）
-- 本地没绑 KV 时，`config-store` 自动回退到 `server/.runtime-config.json` 文件，功能不受影响
-
----
-
-## 验证与排错
-
-### 先访问独立健康检查
-
-部署后先在浏览器打开：
+部署完成后访问：
 
 ```
 https://<你的域名>/api/health
 ```
 
-- 返回 JSON → Vercel 函数基础设施正常，继续排查 catch-all 里的依赖。
-- 仍报 `FUNCTION_INVOCATION_FAILED` → 函数还没部署到新版本，或 Vercel 运行时/构建产物本身有问题，看 Function Logs。
+应返回类似：
+```json
+{ "ok": true, "service": "trip-os-server", "env": {"databaseUrl": true, "jwtSecret": true, "aiApiKey": true, "amapKey": false}, "kvBound": false }
+```
 
-### 环境变量 Key 名必须完全一致
+- 打开网站根路径 `https://<你的域名>/` → 看到前端页面（`dist/` 静态托管 + SPA fallback）。
+- 设置页「测试模型连接」：后端 `/api/*` 通了即可用（依赖 `AI_API_KEY` 等已配）。
 
-常见错误：填了 `LLM_API_KEY` 但代码读的是 `AI_API_KEY`；填了 `VITE_NEON_AUTH_URL` 但代码读的是 `DATABASE_URL`。Key 名必须和下面「配置环境变量」表格里的**完全一致**。
+## 常见问题
 
-### 排错表
+- **还是 `FUNCTION_INVOCATION_FAILED`**：看 Vercel 的 **Function Logs**（不是 Build Logs）。多半是 `DATABASE_URL` 没填/连不上，或 `NODE_ENV` 没设 `production`。
+- **`/api/health` 返回 500 但 health 不依赖 DB**：检查 `JWT_SECRET` / `AI_API_KEY` 是否缺失（health 会回显 env 状态，看 JSON 里哪个 `false`）。
+- **前端白屏 / 资源 404**：确认 Output Directory 是 `dist`，且 `rewrites` 已把非 `/api` 路由转到 `index.html`（见 `vercel.json`）。
+- **冷启动慢**：Hobby 档函数可能偶发冷启动，但超时已设为 60s，AI 生成接口够用。
 
-| 现象 | 原因 / 解决 |
-|---|---|
-| 设置页「测试模型连接」报 `FUNCTION_INVOCATION_FAILED` | 先看 `/api/health`；若 health 通，再看 Function Logs 里的真实错误（现在会 JSON 化返回给浏览器） |
-| 函数日志报 `Prisma Client not generated` | `postinstall` 没跑；确认根 `package.json` 的 `postinstall` 是 `prisma generate --schema prisma/schema.prisma` |
-| `/api/*` 返回 404 | 确认 `api/[...path].ts` 在**仓库根** `api/` 目录（不是 `server/api`） |
-| 设置页保存的 Key 不持久 / 测试时有时无 | 确认 KV 已绑定（环境变量里应有 `KV_REST_API_URL`） |
-| 数据库连不上 | `DATABASE_URL` 用 Neon **pooled** 地址（`:6543`），且已 `prisma db push` 建表 |
-| 函数超时 | AI/小红书调用较慢，已把函数 `maxDuration` 设为 30s；仍不够可在 `vercel.json` 调大（Hobby 上限 60s） |
+## 与 Render / Railway 的关系
 
-## 关键文件
-
-- `api/[...path].ts` —— Vercel 函数入口，转发到 Fastify
-- `server/src/app.ts` —— Fastify 装配工厂（路由全在这里注册）
-- `server/src/config-store.ts` —— 运行时配置，自动选 Vercel KV 或本地文件
-- `prisma/schema.prisma` —— Postgres schema（已从 SQLite 迁移）
-- `package.json` —— 后端依赖已合并到根，含 `postinstall` 钩子
+- `scripts/bundle-server.mjs` + `dist-server/index.mjs`（Railway/Render 常驻 Node 用）仍保留，`npm run build` 会一并产出，互不影响。
+- `render.yaml` / `RAILWAY_DEPLOY.md` 也保留，若要换免费 Render，照 `RENDER_DEPLOY.md` 即可。
