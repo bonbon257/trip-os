@@ -1,0 +1,40 @@
+# Render Blueprint —— 免费部署 trip-os
+# 在 Render 网页 New → Blueprint → 连仓库选本文件，一键拉起 Web Service。
+# 免费档无需绑卡；Web Service 15 分钟无请求会休眠（冷启动 ~30-60s）。
+#
+# 数据库说明：
+#   · 下面这段 postgres 是 Render 免费 PG（约 30 天过期，到期需重建并重新 db push）。
+#   · 想要「持久不过期」的免费库，删掉下面 postgres 段，改到 Neon/Supabase 建免费库，
+#     把它的连接串作为环境变量 DATABASE_URL 手动填进 Web Service 即可（见 RENDER_DEPLOY.md）。
+services:
+  - type: web
+    name: trip-os
+    runtime: node
+    plan: free
+    buildCommand: npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: trip-os-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: AI_API_KEY
+        sync: false
+      - key: AI_BASE_URL
+        value: https://api.deepseek.com
+      - key: AI_MODEL
+        value: deepseek-chat
+      - key: AMAP_WEB_KEY
+        sync: false
+
+  - type: postgres
+    name: trip-os-db
+    plan: free
+    databaseName: trip_os
+    user: trip_os
+    # 30 天后免费 PG 会过期；需持久化请改用 Neon（见 RENDER_DEPLOY.md）

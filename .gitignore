@@ -29,5 +29,10 @@ vite.config.ts.timestamp-*.mjs
 server/prisma/prisma/*.db
 server/prisma/prisma/*.db-journal
 
-# API 函数：由 esbuild 预打包生成（scripts/bundle-api.mjs），运行期产物不入库
-api/*.mjs
+# API 函数（Vercel 用）：由 esbuild 预打包成 api/*.mjs。
+# 注意：api/*.mjs 必须入库！Vercel 在 build 之前就校验 functions glob，
+# 那时 .mjs 需已存在；build 阶段会重新生成（幂等）。源码在 api-src/，不在 api/。
+# （dist-server/ 才是真正不入库的运行期产物）
+dist-server/
+
+# 常驻 Node 服务打包产物（scripts/bundle-server.mjs），运行期产物不入库

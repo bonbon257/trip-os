@@ -7,9 +7,12 @@
     }
   ],
   "functions": {
-    "api/**/*": {
-      "maxDuration": 30,
-      "includeFiles": "node_modules/.prisma/**"
+    "api/**/*.mjs": {
+      "maxDuration": 60,
+      "includeFiles": [
+        "node_modules/.prisma/**",
+        "node_modules/@prisma/**"
+      ]
     }
   }
 }
